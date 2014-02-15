@@ -25,6 +25,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <gssapi/gssapi.h>
+#include <gssapi/gssapi_ext.h>
 
 #include <httpd.h>
 #include <http_core.h>
@@ -37,7 +38,7 @@ module AP_MODULE_DECLARE_DATA mag_module;
 
 struct mag_config {
     bool ssl_only;
-    bool save_creds;
+    gss_key_value_set_desc cred_store;
 };
 
 static char *mag_status(request_rec *req, int type, uint32_t err)
@@ -158,7 +159,15 @@ static int mag_auth(request_rec *req)
         goto done;
     }
 
-    /* FIXME: save creds */
+#ifdef HAVE_GSS_STORE_CRED_INTO
+    if (cfg->cred_store && delegated_cred != GSS_C_NO_CREDENTIAL) {
+        gss_key_value_set_desc store = {0, NULL};
+        /* FIXME: run substtutions */
+
+        maj = gss_store_cred_into(&min, delegated_cred, GSS_C_INITIATE,
+                                  GSS_C_NULL_OID, 1, 1, &store, NULL, NULL);
+    }
+#endif
 
     req->ap_auth_type = apr_pstrdup(req->pool, "Negotiate");
     req->user = apr_pstrndup(req->pool, name.value, name.length);
@@ -194,18 +203,57 @@ static const char *mag_ssl_only(cmd_parms *parms, void *mconfig, int on)
     return NULL;
 }
 
-static const char *mag_save_creds(cmd_parms *parms, void *mconfig, int on)
+static const char *mag_cred_store(cmd_parms *parms, void *mconfig,
+                                  const char *w)
 {
     struct mag_config *cfg = (struct mag_config *)mconfig;
-    cfg->save_creds = on ? true : false;
+    gss_key_value_element_desc *elements;
+    uint32_t count;
+    size_t size;
+    const char *p;
+    char *value;
+    char *key;
+
+    p = strchr(w, ':');
+    if (!p) {
+        ap_log_error(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, parms->server,
+                     "%s [%s]", "Invalid syntax for GSSCredStore option", w);
+        return NULL;
+    }
+
+    key = apr_pstrndup(parms->pool, w, (p-w));
+    value = apr_pstrdup(parms->pool, p + 1);
+    if (!key || !value) {
+        ap_log_error(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, parms->server,
+                     "%s", "OOM handling GSSCredStore option");
+        return NULL;
+    }
+
+    size = sizeof(gss_key_value_element_desc) * cfg->cred_store.count + 1;
+    elements = apr_palloc(parms->pool, size);
+    if (!elements) {
+        ap_log_error(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, parms->server,
+                     "%s", "OOM handling GSSCredStore option");
+        return NULL;
+    }
+
+    for (count = 0; count < cfg->cred_store.count; count++) {
+        elements[count] = cfg->cred_store.elements[count];
+    }
+    elements[count].key = key;
+    elements[count].value = value;
+
+    cfg->cred_store.elements = elements;
+    cfg->cred_store.count = count;
+
     return NULL;
 }
 
 static const command_rec mag_commands[] = {
     AP_INIT_FLAG("GSSSSLOnly", mag_ssl_only, NULL, OR_AUTHCFG,
                   "Work only if connection is SSL Secured"),
-    AP_INIT_FLAG("GSSSaveCreds", mag_save_creds, NULL, OR_AUTHCFG,
-                  "Save credentials"),
+    AP_INIT_ITERATE("GSSCredStore", mag_cred_store, NULL, OR_AUTHCFG,
+                    "Credential Store"),
     { NULL }
 };
 
