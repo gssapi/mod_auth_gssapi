@@ -107,7 +107,10 @@ static int mag_auth(request_rec *req)
 
     cfg = ap_get_module_config(req->per_dir_config, &mag_module);
 
-    /* FIXME: Checks for ssl only configuration */
+    if (cfg->ssl_only) {
+        ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, req,
+                      "FIXME: check for ssl!");
+    }
 
     auth_header = apr_table_get(req->headers_in, "Authorization");
     if (!auth_header) goto done;
@@ -157,7 +160,7 @@ static int mag_auth(request_rec *req)
 
     /* FIXME: save creds */
 
-    req->ap_auth_type = "Negotiate";
+    req->ap_auth_type = apr_pstrdup(req->pool, "Negotiate");
     req->user = apr_pstrndup(req->pool, name.value, name.length);
     ret = OK;
 
