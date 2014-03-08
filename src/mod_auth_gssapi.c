@@ -38,6 +38,7 @@ module AP_MODULE_DECLARE_DATA mag_module;
 
 struct mag_config {
     bool ssl_only;
+    bool map_to_local;
     gss_key_value_set_desc cred_store;
 };
 
@@ -100,6 +101,9 @@ static int mag_auth(request_rec *req)
     uint32_t maj, min;
     char *reply;
     size_t replen;
+    char *clientname;
+    gss_OID mech_type = GSS_C_NO_OID;
+    gss_buffer_desc lname = GSS_C_EMPTY_BUFFER;
 
     type = ap_auth_type(req);
     if ((type == NULL) || (strcasecmp(type, "GSSAPI") != 0)) {
@@ -132,7 +136,7 @@ static int mag_auth(request_rec *req)
      * should work with Krb, will fail with NTLMSSP */
     maj = gss_accept_sec_context(&min, &ctx, GSS_C_NO_CREDENTIAL,
                                  &input, GSS_C_NO_CHANNEL_BINDINGS,
-                                 &client, NULL, &output, &flags, NULL,
+                                 &client, &mech_type, &output, &flags, NULL,
                                  &delegated_cred);
     if (GSS_ERROR(maj)) {
         ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, req,
@@ -170,7 +174,22 @@ static int mag_auth(request_rec *req)
 #endif
 
     req->ap_auth_type = apr_pstrdup(req->pool, "Negotiate");
-    req->user = apr_pstrndup(req->pool, name.value, name.length);
+
+    /* Always set the GSS name in an env var */
+    clientname = apr_pstrndup(req->pool, name.value, name.length);
+    apr_table_set(req->subprocess_env, "GSS_NAME", clientname);
+
+    if (cfg->map_to_local) {
+        maj = gss_localname(&min, client, mech_type, &lname);
+        if (maj != GSS_S_COMPLETE) {
+            ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, req,
+                          mag_error(req, "gss_localname() failed", maj, min));
+            goto done;
+        }
+        req->user = apr_pstrndup(req->pool, lname.value, lname.length);
+    } else {
+        req->user = clientname;
+    }
     ret = OK;
 
 done:
@@ -182,6 +201,7 @@ done:
     gss_release_name(&min, &client);
     gss_release_buffer(&min, &name);
     gss_delete_sec_context(&min, &ctx, GSS_C_NO_BUFFER);
+    gss_release_buffer(&min, &lname);
     return ret;
 }
 
@@ -200,6 +220,13 @@ static const char *mag_ssl_only(cmd_parms *parms, void *mconfig, int on)
 {
     struct mag_config *cfg = (struct mag_config *)mconfig;
     cfg->ssl_only = on ? true : false;
+    return NULL;
+}
+
+static const char *mag_map_to_local(cmd_parms *parms, void *mconfig, int on)
+{
+    struct mag_config *cfg = (struct mag_config *)mconfig;
+    cfg->map_to_local = on ? true : false;
     return NULL;
 }
 
@@ -251,6 +278,8 @@ static const char *mag_cred_store(cmd_parms *parms, void *mconfig,
 
 static const command_rec mag_commands[] = {
     AP_INIT_FLAG("GSSSSLOnly", mag_ssl_only, NULL, OR_AUTHCFG,
+                  "Work only if connection is SSL Secured"),
+    AP_INIT_FLAG("GSSLocalName", mag_map_to_local, NULL, OR_AUTHCFG,
                   "Work only if connection is SSL Secured"),
     AP_INIT_ITERATE("GSSCredStore", mag_cred_store, NULL, OR_AUTHCFG,
                     "Credential Store"),
