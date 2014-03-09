@@ -34,7 +34,7 @@
 #include <apr_strings.h>
 #include <apr_base64.h>
 
-module AP_MODULE_DECLARE_DATA mag_module;
+module AP_MODULE_DECLARE_DATA auth_gssapi_module;
 
 struct mag_config {
     bool ssl_only;
@@ -110,7 +110,7 @@ static int mag_auth(request_rec *req)
         return DECLINED;
     }
 
-    cfg = ap_get_module_config(req->per_dir_config, &mag_module);
+    cfg = ap_get_module_config(req->per_dir_config, &auth_gssapi_module);
 
     if (cfg->ssl_only) {
         ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, req,
