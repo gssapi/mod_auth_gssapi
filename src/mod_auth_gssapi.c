@@ -29,6 +29,7 @@
 
 #include <httpd.h>
 #include <http_core.h>
+#include <http_connection.h>
 #include <http_log.h>
 #include <http_request.h>
 #include <apr_strings.h>
@@ -39,6 +40,7 @@ module AP_MODULE_DECLARE_DATA auth_gssapi_module;
 struct mag_config {
     bool ssl_only;
     bool map_to_local;
+    bool gss_conn_ctx;
     gss_key_value_set_desc cred_store;
 };
 
@@ -83,6 +85,24 @@ static char *mag_error(request_rec *req, const char *msg,
     return apr_psprintf(req->pool, "%s: [%s (%s)]", msg, msg_maj, msg_min);
 }
 
+struct mag_conn {
+    gss_ctx_id_t ctx;
+    bool established;
+    char *user_name;
+    char *gss_name;
+};
+
+static int mag_pre_connection(conn_rec *c, void *csd)
+{
+    struct mag_conn *mc;
+
+    mc = apr_pcalloc(c->pool, sizeof(struct mag_conn));
+    if (!mc) return DECLINED;
+
+    ap_set_module_config(c->conn_config, &auth_gssapi_module, (void*)mc);
+    return OK;
+}
+
 static int mag_auth(request_rec *req)
 {
     const char *type;
@@ -104,6 +124,7 @@ static int mag_auth(request_rec *req)
     char *clientname;
     gss_OID mech_type = GSS_C_NO_OID;
     gss_buffer_desc lname = GSS_C_EMPTY_BUFFER;
+    struct mag_conn *mc = NULL;
 
     type = ap_auth_type(req);
     if ((type == NULL) || (strcasecmp(type, "GSSAPI") != 0)) {
@@ -115,6 +136,26 @@ static int mag_auth(request_rec *req)
     if (cfg->ssl_only) {
         ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, req,
                       "FIXME: check for ssl!");
+    }
+
+    if (cfg->gss_conn_ctx) {
+        mc = (struct mag_conn *)ap_get_module_config(
+                                                req->connection->conn_config,
+                                                &auth_gssapi_module);
+        if (!mc) {
+            return DECLINED;
+        }
+        if (mc->established) {
+            ap_log_rerror(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, req,
+                          "Connection bound pre-authentication found.");
+            apr_table_set(req->subprocess_env, "GSS_NAME", mc->gss_name);
+            req->ap_auth_type = apr_pstrdup(req->pool, "Negotiate");
+            req->user = apr_pstrdup(req->pool, mc->user_name);
+            ret = OK;
+            goto done;
+        } else {
+            ctx = mc->ctx;
+        }
     }
 
     auth_header = apr_table_get(req->headers_in, "Authorization");
@@ -132,8 +173,6 @@ static int mag_auth(request_rec *req)
     if (!input.value) goto done;
     input.length = apr_base64_decode(input.value, auth_header_value);
 
-    /* FIXME: this works only with "one-roundtrip" gssapi auth for now,
-     * should work with Krb, will fail with NTLMSSP */
     maj = gss_accept_sec_context(&min, &ctx, GSS_C_NO_CREDENTIAL,
                                  &input, GSS_C_NO_CHANNEL_BINDINGS,
                                  &client, &mech_type, &output, &flags, NULL,
@@ -145,23 +184,12 @@ static int mag_auth(request_rec *req)
         goto done;
     }
 
-    if (output.length) {
-        replen = apr_base64_encode_len(output.length) + 1;
-        reply = apr_pcalloc(req->pool, 10 + replen);
-        if (!reply) goto done;
-        memcpy(reply, "Negotiate ", 10);
-        apr_base64_encode(&reply[10], output.value, output.length);
-        reply[replen] = '\0';
-        apr_table_add(req->err_headers_out, "WWW-Authenticate", reply);
+    if (mc) {
+        mc->ctx = ctx;
+        ctx = GSS_C_NO_CONTEXT;
     }
 
-    maj = gss_display_name(&min, client, &name, NULL);
-    if (GSS_ERROR(maj)) {
-        ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, req,
-                      mag_error(req, "gss_accept_sec_context() failed",
-                                maj, min));
-        goto done;
-    }
+    if (maj == GSS_S_CONTINUE_NEEDED) goto done;
 
 #ifdef HAVE_GSS_STORE_CRED_INTO
     if (cfg->cred_store && delegated_cred != GSS_C_NO_CREDENTIAL) {
@@ -176,6 +204,13 @@ static int mag_auth(request_rec *req)
     req->ap_auth_type = apr_pstrdup(req->pool, "Negotiate");
 
     /* Always set the GSS name in an env var */
+    maj = gss_display_name(&min, client, &name, NULL);
+    if (GSS_ERROR(maj)) {
+        ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, req,
+                      mag_error(req, "gss_accept_sec_context() failed",
+                                maj, min));
+        goto done;
+    }
     clientname = apr_pstrndup(req->pool, name.value, name.length);
     apr_table_set(req->subprocess_env, "GSS_NAME", clientname);
 
@@ -190,11 +225,31 @@ static int mag_auth(request_rec *req)
     } else {
         req->user = clientname;
     }
+
+    if (mc) {
+        mc->user_name = apr_pstrdup(req->connection->pool, req->user);
+        mc->gss_name = apr_pstrdup(req->connection->pool, clientname);
+        mc->established = true;
+    }
+
     ret = OK;
 
 done:
     if (ret == HTTP_UNAUTHORIZED) {
-        apr_table_add(req->err_headers_out, "WWW-Authenticate", "Negotiate");
+        if (output.length != 0) {
+            replen = apr_base64_encode_len(output.length) + 1;
+            reply = apr_pcalloc(req->pool, 10 + replen);
+            if (reply) {
+                memcpy(reply, "Negotiate ", 10);
+                apr_base64_encode(&reply[10], output.value, output.length);
+                reply[replen] = '\0';
+                apr_table_add(req->err_headers_out,
+                              "WWW-Authenticate", reply);
+            }
+        } else {
+            apr_table_add(req->err_headers_out,
+                          "WWW-Authenticate", "Negotiate");
+        }
     }
     gss_release_cred(&min, &delegated_cred);
     gss_release_buffer(&min, &output);
@@ -227,6 +282,13 @@ static const char *mag_map_to_local(cmd_parms *parms, void *mconfig, int on)
 {
     struct mag_config *cfg = (struct mag_config *)mconfig;
     cfg->map_to_local = on ? true : false;
+    return NULL;
+}
+
+static const char *mag_conn_ctx(cmd_parms *parms, void *mconfig, int on)
+{
+    struct mag_config *cfg = (struct mag_config *)mconfig;
+    cfg->gss_conn_ctx = on ? true : false;
     return NULL;
 }
 
@@ -281,6 +343,8 @@ static const command_rec mag_commands[] = {
                   "Work only if connection is SSL Secured"),
     AP_INIT_FLAG("GSSLocalName", mag_map_to_local, NULL, OR_AUTHCFG,
                   "Work only if connection is SSL Secured"),
+    AP_INIT_FLAG("GSSConnectionContext", mag_conn_ctx, NULL, OR_AUTHCFG,
+                  "Authentication is valid for the life of the connection"),
     AP_INIT_ITERATE("GSSCredStore", mag_cred_store, NULL, OR_AUTHCFG,
                     "Credential Store"),
     { NULL }
@@ -290,6 +354,7 @@ static void
 mag_register_hooks(apr_pool_t *p)
 {
     ap_hook_check_user_id(mag_auth, NULL, NULL, APR_HOOK_MIDDLE);
+    ap_hook_pre_connection(mag_pre_connection, NULL, NULL, APR_HOOK_MIDDLE);
 }
 
 module AP_MODULE_DECLARE_DATA auth_gssapi_module =
