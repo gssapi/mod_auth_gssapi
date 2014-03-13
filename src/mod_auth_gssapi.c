@@ -37,6 +37,8 @@
 
 module AP_MODULE_DECLARE_DATA auth_gssapi_module;
 
+APR_DECLARE_OPTIONAL_FN(int, ssl_is_https, (conn_rec *));
+
 struct mag_config {
     bool ssl_only;
     bool map_to_local;
@@ -103,6 +105,17 @@ static int mag_pre_connection(conn_rec *c, void *csd)
     return OK;
 }
 
+static APR_OPTIONAL_FN_TYPE(ssl_is_https) *mag_is_https = NULL;
+
+static bool mag_conn_is_https(conn_rec *c)
+{
+    if (mag_is_https) {
+        if (mag_is_https(c)) return true;
+    }
+
+    return false;
+}
+
 static int mag_auth(request_rec *req)
 {
     const char *type;
@@ -134,8 +147,11 @@ static int mag_auth(request_rec *req)
     cfg = ap_get_module_config(req->per_dir_config, &auth_gssapi_module);
 
     if (cfg->ssl_only) {
-        ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, req,
-                      "FIXME: check for ssl!");
+        if (!mag_conn_is_https(req->connection)) {
+            ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, req,
+                          "Not a TLS connection, refusing to authenticate!");
+            goto done;
+        }
     }
 
     if (cfg->gss_conn_ctx) {
