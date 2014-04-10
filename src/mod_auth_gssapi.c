@@ -268,7 +268,6 @@ done:
             if (reply) {
                 memcpy(reply, "Negotiate ", 10);
                 apr_base64_encode(&reply[10], output.value, output.length);
-                reply[replen] = '\0';
                 apr_table_add(req->err_headers_out,
                               "WWW-Authenticate", reply);
             }
