@@ -135,6 +135,7 @@ static int mag_auth(request_rec *req)
     char *auth_header_value;
     int ret = HTTP_UNAUTHORIZED;
     gss_ctx_id_t ctx = GSS_C_NO_CONTEXT;
+    gss_ctx_id_t *pctx;
     gss_buffer_desc input = GSS_C_EMPTY_BUFFER;
     gss_buffer_desc output = GSS_C_EMPTY_BUFFER;
     gss_buffer_desc name = GSS_C_EMPTY_BUFFER;
@@ -179,9 +180,10 @@ static int mag_auth(request_rec *req)
             req->user = apr_pstrdup(req->pool, mc->user_name);
             ret = OK;
             goto done;
-        } else {
-            ctx = mc->ctx;
         }
+        pctx = &mc->ctx;
+    } else {
+        pctx = &ctx;
     }
 
     auth_header = apr_table_get(req->headers_in, "Authorization");
@@ -199,7 +201,7 @@ static int mag_auth(request_rec *req)
     if (!input.value) goto done;
     input.length = apr_base64_decode(input.value, auth_header_value);
 
-    maj = gss_accept_sec_context(&min, &ctx, GSS_C_NO_CREDENTIAL,
+    maj = gss_accept_sec_context(&min, pctx, GSS_C_NO_CREDENTIAL,
                                  &input, GSS_C_NO_CHANNEL_BINDINGS,
                                  &client, &mech_type, &output, &flags, NULL,
                                  &delegated_cred);
@@ -210,12 +212,22 @@ static int mag_auth(request_rec *req)
         goto done;
     }
 
-    if (mc) {
-        mc->ctx = ctx;
-        ctx = GSS_C_NO_CONTEXT;
+    if (maj == GSS_S_CONTINUE_NEEDED) {
+        if (!cfg->gss_conn_ctx) {
+            ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, req,
+                          "Mechanism needs continuation but "
+                          "GSSConnectionContext is off.");
+            gss_delete_sec_context(&min, pctx, GSS_C_NO_BUFFER);
+            gss_release_buffer(&min, &output);
+            output.length = 0;
+        }
+        goto done;
     }
 
-    if (maj == GSS_S_CONTINUE_NEEDED) goto done;
+    /* once the connection has been accepted we do not need the context
+     * anymore, discard it. FIXME: we also need a destructor for those
+     * mechanisms (like NTLMSSP) that do not complete in one step */
+    gss_delete_sec_context(&min, pctx, GSS_C_NO_BUFFER);
 
 #ifdef HAVE_GSS_STORE_CRED_INTO
     if (cfg->cred_store && delegated_cred != GSS_C_NO_CREDENTIAL) {
@@ -280,7 +292,6 @@ done:
     gss_release_buffer(&min, &output);
     gss_release_name(&min, &client);
     gss_release_buffer(&min, &name);
-    gss_delete_sec_context(&min, &ctx, GSS_C_NO_BUFFER);
     gss_release_buffer(&min, &lname);
     return ret;
 }
