@@ -87,6 +87,18 @@ static char *mag_error(request_rec *req, const char *msg,
     return apr_psprintf(req->pool, "%s: [%s (%s)]", msg, msg_maj, msg_min);
 }
 
+static APR_OPTIONAL_FN_TYPE(ssl_is_https) *mag_is_https = NULL;
+
+static int mag_post_config(apr_pool_t *cfg, apr_pool_t *log,
+                           apr_pool_t *temp, server_rec *s)
+{
+    /* FIXME: create mutex to deal with connections and contexts ? */
+    mag_is_https = APR_RETRIEVE_OPTIONAL_FN(ssl_is_https);
+
+    return OK;
+}
+
+
 struct mag_conn {
     gss_ctx_id_t ctx;
     bool established;
@@ -104,8 +116,6 @@ static int mag_pre_connection(conn_rec *c, void *csd)
     ap_set_module_config(c->conn_config, &auth_gssapi_module, (void*)mc);
     return OK;
 }
-
-static APR_OPTIONAL_FN_TYPE(ssl_is_https) *mag_is_https = NULL;
 
 static bool mag_conn_is_https(conn_rec *c)
 {
@@ -370,6 +380,7 @@ static void
 mag_register_hooks(apr_pool_t *p)
 {
     ap_hook_check_user_id(mag_auth, NULL, NULL, APR_HOOK_MIDDLE);
+    ap_hook_post_config(mag_post_config, NULL, NULL, APR_HOOK_MIDDLE);
     ap_hook_pre_connection(mag_pre_connection, NULL, NULL, APR_HOOK_MIDDLE);
 }
 
