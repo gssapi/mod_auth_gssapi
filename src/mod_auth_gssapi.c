@@ -100,6 +100,7 @@ static int mag_post_config(apr_pool_t *cfg, apr_pool_t *log,
 
 
 struct mag_conn {
+    apr_pool_t *parent;
     gss_ctx_id_t ctx;
     bool established;
     char *user_name;
@@ -113,8 +114,21 @@ static int mag_pre_connection(conn_rec *c, void *csd)
     mc = apr_pcalloc(c->pool, sizeof(struct mag_conn));
     if (!mc) return DECLINED;
 
+    mc->parent = c->pool;
     ap_set_module_config(c->conn_config, &auth_gssapi_module, (void*)mc);
     return OK;
+}
+
+static apr_status_t mag_conn_destroy(void *ptr)
+{
+    struct mag_conn *mc = (struct mag_conn *)ptr;
+    uint32_t min;
+
+    if (mc->ctx) {
+        (void)gss_delete_sec_context(&min, &mc->ctx, GSS_C_NO_BUFFER);
+        mc->established = false;
+    }
+    return APR_SUCCESS;
 }
 
 static bool mag_conn_is_https(conn_rec *c)
@@ -212,6 +226,10 @@ static int mag_auth(request_rec *req)
         goto done;
     }
 
+    /* register the context in the connection pool, so it can be freed
+     * when the connection is terminated */
+    apr_pool_userdata_set(mc, "mag_conn_ptr", mag_conn_destroy, mc->parent);
+
     if (maj == GSS_S_CONTINUE_NEEDED) {
         if (!cfg->gss_conn_ctx) {
             ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, req,
@@ -223,11 +241,6 @@ static int mag_auth(request_rec *req)
         }
         goto done;
     }
-
-    /* once the connection has been accepted we do not need the context
-     * anymore, discard it. FIXME: we also need a destructor for those
-     * mechanisms (like NTLMSSP) that do not complete in one step */
-    gss_delete_sec_context(&min, pctx, GSS_C_NO_BUFFER);
 
 #ifdef HAVE_GSS_STORE_CRED_INTO
     if (cfg->cred_store && delegated_cred != GSS_C_NO_CREDENTIAL) {
@@ -265,8 +278,8 @@ static int mag_auth(request_rec *req)
     }
 
     if (mc) {
-        mc->user_name = apr_pstrdup(req->connection->pool, req->user);
-        mc->gss_name = apr_pstrdup(req->connection->pool, clientname);
+        mc->user_name = apr_pstrdup(mc->parent, req->user);
+        mc->gss_name = apr_pstrdup(mc->parent, clientname);
         mc->established = true;
     }
 
