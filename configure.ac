@@ -31,24 +31,8 @@ AC_ARG_WITH([apxs],
             [AC_PATH_PROGS(APXS, [apxs2 apxs])])
 AS_IF([test "x${APXS}" != "x" -a -x "${APXS}"],
       [AC_MSG_NOTICE([apxs found at $APXS])
-       APXS_CPPFLAGS=`${APXS} -q CFLAGS`
-       AC_SUBST(APXS_CPPFLAGS)
-       APXS_LDFLAGS=`${APXS} -q LDFLAGS_SHLIB`
-       AC_SUBST(APXS_LDFLAGS)
-       APXS_LIBS=`${APXS} -q LIBS_SHLIB`
-       AC_SUBST(APXS_LIBS)
-       APXS_INCLUDES=-I`${APXS} -q INCLUDEDIR`
-       AC_SUBST(APXS_INCLUDES)
-       APXS_CPPFLAGS_SHLIB=`${APXS} -q CFLAGS_SHLIB`
-       AC_SUBST(APXS_CPPFLAGS_SHLIB)
-       APXS_LD_SHLIB=`${APXS} -q LD_SHLIB`
-       AC_SUBST(APXS_LD_SHLIB)
        APXS_LIBEXECDIR=`${APXS} -q LIBEXECDIR`
-       AC_SUBST(APXS_LIBEXECDIR)
-       APXS_SYSCONFDIR=`${APXS} -q SYSCONFDIR`
-       AC_SUBST(APXS_SYSCONFDIR)
-       APXS_PREFIX=`${APXS} -q PREFIX`
-       AC_SUBST(APXS_PREFIX)],
+       AC_SUBST(APXS_LIBEXECDIR)],
       [AC_MSG_FAILURE(["apxs not found. Use --with-apxs"])])
 
 AC_ARG_WITH([apr],
@@ -80,6 +64,9 @@ AC_CHECK_FUNCS(gss_store_cred_into)
 
 AC_SUBST([GSSAPI_CFLAGS])
 AC_SUBST([GSSAPI_LIBS])
+
+CFLAGS="`${APXS} -q CFLAGS` `${APR} --cflags` ${GSSAPI_CFLAGS} -I`${APXS} -q INCLUDEDIR` -I`${APR} --includes`"
+LIBS="`${APR} --link-libtool --libs` ${GSSAPI_LIBS}"
 
 AC_CONFIG_FILES([Makefile src/Makefile])
 
