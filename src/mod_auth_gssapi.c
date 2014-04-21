@@ -234,7 +234,7 @@ static int mag_auth(request_rec *req)
         if (!cfg->gss_conn_ctx) {
             ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, req,
                           "Mechanism needs continuation but "
-                          "GSSConnectionContext is off.");
+                          "GssapiConnectionBound is off.");
             gss_delete_sec_context(&min, pctx, GSS_C_NO_BUFFER);
             gss_release_buffer(&min, &output);
             output.length = 0;
@@ -355,7 +355,7 @@ static const char *mag_cred_store(cmd_parms *parms, void *mconfig,
     p = strchr(w, ':');
     if (!p) {
         ap_log_error(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, parms->server,
-                     "%s [%s]", "Invalid syntax for GSSCredStore option", w);
+                     "%s [%s]", "Invalid syntax for GssapiCredStore option", w);
         return NULL;
     }
 
@@ -363,7 +363,7 @@ static const char *mag_cred_store(cmd_parms *parms, void *mconfig,
     value = apr_pstrdup(parms->pool, p + 1);
     if (!key || !value) {
         ap_log_error(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, parms->server,
-                     "%s", "OOM handling GSSCredStore option");
+                     "%s", "OOM handling GssapiCredStore option");
         return NULL;
     }
 
@@ -371,7 +371,7 @@ static const char *mag_cred_store(cmd_parms *parms, void *mconfig,
     elements = apr_palloc(parms->pool, size);
     if (!elements) {
         ap_log_error(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, parms->server,
-                     "%s", "OOM handling GSSCredStore option");
+                     "%s", "OOM handling GssapiCredStore option");
         return NULL;
     }
 
@@ -388,13 +388,13 @@ static const char *mag_cred_store(cmd_parms *parms, void *mconfig,
 }
 
 static const command_rec mag_commands[] = {
-    AP_INIT_FLAG("GSSSSLOnly", mag_ssl_only, NULL, OR_AUTHCFG,
+    AP_INIT_FLAG("GssapiSSLonly", mag_ssl_only, NULL, OR_AUTHCFG,
                   "Work only if connection is SSL Secured"),
-    AP_INIT_FLAG("GSSLocalName", mag_map_to_local, NULL, OR_AUTHCFG,
+    AP_INIT_FLAG("GssapiLocalName", mag_map_to_local, NULL, OR_AUTHCFG,
                   "Work only if connection is SSL Secured"),
-    AP_INIT_FLAG("GSSConnectionContext", mag_conn_ctx, NULL, OR_AUTHCFG,
-                  "Authentication is valid for the life of the connection"),
-    AP_INIT_ITERATE("GSSCredStore", mag_cred_store, NULL, OR_AUTHCFG,
+    AP_INIT_FLAG("GssapiConnectionBound", mag_conn_ctx, NULL, OR_AUTHCFG,
+                  "Authentication is bound to the TCP connection"),
+    AP_INIT_ITERATE("GssapiCredStore", mag_cred_store, NULL, OR_AUTHCFG,
                     "Credential Store"),
     { NULL }
 };
