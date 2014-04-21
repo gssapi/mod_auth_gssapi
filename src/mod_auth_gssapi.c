@@ -24,6 +24,7 @@
 
 #include "mod_auth_gssapi.h"
 
+
 module AP_MODULE_DECLARE_DATA auth_gssapi_module;
 
 APR_DECLARE_OPTIONAL_FN(int, ssl_is_https, (conn_rec *));
@@ -71,23 +72,15 @@ static char *mag_error(request_rec *req, const char *msg,
 
 static APR_OPTIONAL_FN_TYPE(ssl_is_https) *mag_is_https = NULL;
 
-static int mag_post_config(apr_pool_t *cfg, apr_pool_t *log,
+static int mag_post_config(apr_pool_t *cfgpool, apr_pool_t *log,
                            apr_pool_t *temp, server_rec *s)
 {
     /* FIXME: create mutex to deal with connections and contexts ? */
     mag_is_https = APR_RETRIEVE_OPTIONAL_FN(ssl_is_https);
+    mag_post_config_session();
 
     return OK;
 }
-
-
-struct mag_conn {
-    apr_pool_t *parent;
-    gss_ctx_id_t ctx;
-    bool established;
-    char *user_name;
-    char *gss_name;
-};
 
 static int mag_pre_connection(conn_rec *c, void *csd)
 {
@@ -138,6 +131,7 @@ static int mag_auth(request_rec *req)
     gss_name_t client = GSS_C_NO_NAME;
     gss_cred_id_t delegated_cred = GSS_C_NO_CREDENTIAL;
     uint32_t flags;
+    uint32_t vtime;
     uint32_t maj, min;
     char *reply;
     size_t replen;
@@ -149,6 +143,11 @@ static int mag_auth(request_rec *req)
     type = ap_auth_type(req);
     if ((type == NULL) || (strcasecmp(type, "GSSAPI") != 0)) {
         return DECLINED;
+    }
+
+    /* ignore auth for subrequests */
+    if (!ap_is_initial_req(req)) {
+        return OK;
     }
 
     cfg = ap_get_module_config(req->per_dir_config, &auth_gssapi_module);
@@ -166,11 +165,24 @@ static int mag_auth(request_rec *req)
                                                 req->connection->conn_config,
                                                 &auth_gssapi_module);
         if (!mc) {
-            return DECLINED;
+            ap_log_rerror(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, req,
+                          "Failed to retrieve connection context!");
+            goto done;
         }
+    }
+
+    /* if available, session always supersedes connection bound data */
+    mag_check_session(req, cfg, &mc);
+
+    if (mc) {
+        /* register the context in the memory pool, so it can be freed
+         * when the connection/request is terminated */
+        apr_pool_userdata_set(mc, "mag_conn_ptr",
+                              mag_conn_destroy, mc->parent);
+
         if (mc->established) {
             ap_log_rerror(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, req,
-                          "Connection bound pre-authentication found.");
+                          "Already established context found!");
             apr_table_set(req->subprocess_env, "GSS_NAME", mc->gss_name);
             req->ap_auth_type = apr_pstrdup(req->pool, "Negotiate");
             req->user = apr_pstrdup(req->pool, mc->user_name);
@@ -199,7 +211,7 @@ static int mag_auth(request_rec *req)
 
     maj = gss_accept_sec_context(&min, pctx, GSS_C_NO_CREDENTIAL,
                                  &input, GSS_C_NO_CHANNEL_BINDINGS,
-                                 &client, &mech_type, &output, &flags, NULL,
+                                 &client, &mech_type, &output, &flags, &vtime,
                                  &delegated_cred);
     if (GSS_ERROR(maj)) {
         ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, req,
@@ -208,19 +220,17 @@ static int mag_auth(request_rec *req)
         goto done;
     }
 
-    /* register the context in the connection pool, so it can be freed
-     * when the connection is terminated */
-    apr_pool_userdata_set(mc, "mag_conn_ptr", mag_conn_destroy, mc->parent);
-
     if (maj == GSS_S_CONTINUE_NEEDED) {
-        if (!cfg->gss_conn_ctx) {
+        if (!mc) {
             ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, req,
-                          "Mechanism needs continuation but "
-                          "GssapiConnectionBound is off.");
+                          "Mechanism needs continuation but neither "
+                          "GssapiConnectionBound nor "
+                          "GssapiUseSessions are available");
             gss_delete_sec_context(&min, pctx, GSS_C_NO_BUFFER);
             gss_release_buffer(&min, &output);
             output.length = 0;
         }
+        /* auth not complete send token and wait next packet */
         goto done;
     }
 
@@ -263,6 +273,11 @@ static int mag_auth(request_rec *req)
         mc->user_name = apr_pstrdup(mc->parent, req->user);
         mc->gss_name = apr_pstrdup(mc->parent, clientname);
         mc->established = true;
+        if (vtime == GSS_C_INDEFINITE || vtime < MIN_SESS_EXP_TIME) {
+            vtime = MIN_SESS_EXP_TIME;
+        }
+        mc->expiration = time(NULL) + vtime;
+        mag_attempt_session(req, cfg, mc);
     }
 
     ret = OK;
@@ -298,6 +313,7 @@ static void *mag_create_dir_config(apr_pool_t *p, char *dir)
 
     cfg = (struct mag_config *)apr_pcalloc(p, sizeof(struct mag_config));
     if (!cfg) return NULL;
+    cfg->pool = p;
 
     return cfg;
 }
@@ -320,6 +336,13 @@ static const char *mag_conn_ctx(cmd_parms *parms, void *mconfig, int on)
 {
     struct mag_config *cfg = (struct mag_config *)mconfig;
     cfg->gss_conn_ctx = on ? true : false;
+    return NULL;
+}
+
+static const char *mag_use_sess(cmd_parms *parms, void *mconfig, int on)
+{
+    struct mag_config *cfg = (struct mag_config *)mconfig;
+    cfg->use_sessions = on ? true : false;
     return NULL;
 }
 
@@ -376,6 +399,8 @@ static const command_rec mag_commands[] = {
                   "Work only if connection is SSL Secured"),
     AP_INIT_FLAG("GssapiConnectionBound", mag_conn_ctx, NULL, OR_AUTHCFG,
                   "Authentication is bound to the TCP connection"),
+    AP_INIT_FLAG("GssapiUseSessions", mag_use_sess, NULL, OR_AUTHCFG,
+                  "Authentication uses mod_sessions to hold status"),
     AP_INIT_ITERATE("GssapiCredStore", mag_cred_store, NULL, OR_AUTHCFG,
                     "Credential Store"),
     { NULL }

@@ -1,5 +1,5 @@
 all-local:
-	@APXS@ -c ${LIBS} ${CFLAGS} mod_auth_gssapi.c
+	@APXS@ -c ${LIBS} ${CFLAGS} mod_auth_gssapi.c sessions.c crypto.c
 
 install-exec-local:
 	if test ! -d ${APXS_LIBEXECDIR}; then mkdir -p ${APXS_LIBEXECDIR}; fi
