@@ -245,7 +245,7 @@ static int mag_auth(request_rec *req)
 #ifdef HAVE_GSS_STORE_CRED_INTO
     if (cfg->cred_store && delegated_cred != GSS_C_NO_CREDENTIAL) {
         gss_key_value_set_desc store = {0, NULL};
-        /* FIXME: run substtutions */
+        /* FIXME: run substitutions */
 
         maj = gss_store_cred_into(&min, delegated_cred, GSS_C_INITIATE,
                                   GSS_C_NULL_OID, 1, 1, &store, NULL, NULL);
