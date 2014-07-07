@@ -10,7 +10,8 @@ struct databuf {
     int length;
 };
 
-apr_status_t SEAL_KEY_CREATE(struct seal_key **skey);
+apr_status_t SEAL_KEY_CREATE(apr_pool_t *p, struct seal_key **skey,
+                             struct databuf *keys);
 apr_status_t SEAL_BUFFER(apr_pool_t *p, struct seal_key *skey,
                          struct databuf *plain, struct databuf *cipher);
 apr_status_t UNSEAL_BUFFER(apr_pool_t *p, struct seal_key *skey,

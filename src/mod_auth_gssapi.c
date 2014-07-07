@@ -346,6 +346,47 @@ static const char *mag_use_sess(cmd_parms *parms, void *mconfig, int on)
     return NULL;
 }
 
+static const char *mag_sess_key(cmd_parms *parms, void *mconfig, const char *w)
+{
+    struct mag_config *cfg = (struct mag_config *)mconfig;
+    struct databuf keys;
+    unsigned char *val;
+    apr_status_t rc;
+    const char *k;
+    int l;
+
+    if (strncmp(w, "key:", 4) != 0) {
+        ap_log_error(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, parms->server,
+                     "Invalid key format, expected prefix 'key:'");
+        return NULL;
+    }
+    k = w + 4;
+
+    l = apr_base64_decode_len(k);
+    val = apr_palloc(parms->temp_pool, l);
+    if (!val) {
+        ap_log_error(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, parms->server,
+                     "Failed to get memory to decode key");
+        return NULL;
+    }
+
+    keys.length = (int)apr_base64_decode_binary(val, k);
+    keys.value = (unsigned char *)val;
+
+    if (keys.length != 32) {
+        ap_log_error(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, parms->server,
+                     "Invalid key lenght, expected 32 got %d", keys.length);
+        return NULL;
+    }
+
+    rc = SEAL_KEY_CREATE(cfg->pool, &cfg->mag_skey, &keys);
+    if (rc != OK) {
+        ap_log_error(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, parms->server,
+                     "Failed to import sealing key!");
+    }
+    return NULL;
+}
+
 static const char *mag_cred_store(cmd_parms *parms, void *mconfig,
                                   const char *w)
 {
@@ -401,6 +442,8 @@ static const command_rec mag_commands[] = {
                   "Authentication is bound to the TCP connection"),
     AP_INIT_FLAG("GssapiUseSessions", mag_use_sess, NULL, OR_AUTHCFG,
                   "Authentication uses mod_sessions to hold status"),
+    AP_INIT_RAW_ARGS("GssapiSessionKey", mag_sess_key, NULL, OR_AUTHCFG,
+                     "Key Used to seal session data."),
     AP_INIT_ITERATE("GssapiCredStore", mag_cred_store, NULL, OR_AUTHCFG,
                     "Credential Store"),
     { NULL }

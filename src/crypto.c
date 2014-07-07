@@ -13,56 +13,73 @@ struct seal_key {
     unsigned char *hkey;
 };
 
-apr_status_t SEAL_KEY_CREATE(struct seal_key **skey)
+apr_status_t SEAL_KEY_CREATE(apr_pool_t *p, struct seal_key **skey,
+                             struct databuf *keys)
 {
     struct seal_key *n;
+    int keylen;
     int ret;
 
-    n = calloc(1, sizeof(*n));
+    n = apr_pcalloc(p, sizeof(*n));
     if (!n) return ENOMEM;
 
     n->cipher = EVP_aes_128_cbc();
     if (!n->cipher) {
-        free(n);
-        return EFAULT;
+        ret = EFAULT;
+        goto done;
     }
+
+    keylen = n->cipher->key_len;
 
     n->md = EVP_sha256();
     if (!n->md) {
-        free(n);
-        return EFAULT;
+        ret = EFAULT;
+        goto done;
     }
 
-    n->ekey = malloc(n->cipher->key_len);
+    n->ekey = apr_palloc(p, keylen);
     if (!n->ekey) {
-        free(n);
-        return ENOMEM;
+        ret = ENOMEM;
+        goto done;
     }
 
-    n->hkey = malloc(n->cipher->key_len);
+    n->hkey = apr_palloc(p, keylen);
     if (!n->hkey) {
-        free(n);
-        return ENOMEM;
+        ret = ENOMEM;
+        goto done;
     }
 
-    ret = RAND_bytes(n->ekey, n->cipher->key_len);
-    if (ret == 0) {
+    if (keys) {
+        if (keys->length != (keylen * 2)) {
+            ret = EINVAL;
+            goto done;
+        }
+        memcpy(n->ekey, keys->value, keylen);
+        memcpy(n->hkey, keys->value + keylen, keylen);
+    } else {
+        ret = RAND_bytes(n->ekey, keylen);
+        if (ret == 0) {
+            ret = EFAULT;
+            goto done;
+        }
+
+        ret = RAND_bytes(n->hkey, keylen);
+        if (ret == 0) {
+            ret = EFAULT;
+            goto done;
+        }
+    }
+
+    ret = 0;
+done:
+    if (ret) {
         free(n->ekey);
         free(n->hkey);
         free(n);
-        return EFAULT;
+    } else {
+        *skey = n;
     }
-
-    ret = RAND_bytes(n->hkey, n->cipher->key_len);
-    if (ret == 0) {
-        free(n->ekey);
-        free(n->hkey);
-        free(n);
-        return EFAULT;
-    }
-
-    *skey = n;
-    return 0;
+    return ret;
 }
 
 apr_status_t SEAL_BUFFER(apr_pool_t *p, struct seal_key *skey,

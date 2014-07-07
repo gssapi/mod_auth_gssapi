@@ -147,7 +147,7 @@ void mag_attempt_session(request_rec *req,
     if (!cfg->mag_skey) {
         ap_log_rerror(APLOG_MARK, APLOG_INFO, 0, req,
                       "Session key not available, generating new one.");
-        rc = SEAL_KEY_CREATE(&cfg->mag_skey);
+        rc = SEAL_KEY_CREATE(cfg->pool, &cfg->mag_skey, NULL);
         if (rc != OK) {
             ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, req,
                           "Failed to create sealing key!");
