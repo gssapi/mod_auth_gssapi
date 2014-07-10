@@ -115,6 +115,39 @@ static bool mag_conn_is_https(conn_rec *c)
     return false;
 }
 
+static void mag_store_deleg_creds(request_rec *req,
+                                  char *dir, char *clientname,
+                                  gss_cred_id_t delegated_cred,
+                                  char **ccachefile)
+{
+    gss_key_value_element_desc element;
+    gss_key_value_set_desc store;
+    char *value;
+    uint32_t maj, min;
+
+    value = apr_psprintf(req->pool, "FILE:%s/%s", dir, clientname);
+    if (!value) {
+        ap_log_error(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, NULL,
+                     "OOM storing delegated credentials");
+        return;
+    }
+
+    element.key = "ccache";
+    element.value = value;
+    store.elements = &element;
+    store.count = 1;
+
+    maj = gss_store_cred_into(&min, delegated_cred, GSS_C_INITIATE,
+                              GSS_C_NULL_OID, 1, 1, &store, NULL, NULL);
+    if (GSS_ERROR(maj)) {
+        ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, req,
+                      mag_error(req, "failed to store delegated creds",
+                                maj, min));
+    }
+
+    *ccachefile = value;
+}
+
 static int mag_auth(request_rec *req)
 {
     const char *type;
@@ -129,6 +162,7 @@ static int mag_auth(request_rec *req)
     gss_buffer_desc output = GSS_C_EMPTY_BUFFER;
     gss_buffer_desc name = GSS_C_EMPTY_BUFFER;
     gss_name_t client = GSS_C_NO_NAME;
+    gss_cred_id_t acquired_cred = GSS_C_NO_CREDENTIAL;
     gss_cred_id_t delegated_cred = GSS_C_NO_CREDENTIAL;
     uint32_t flags;
     uint32_t vtime;
@@ -209,7 +243,22 @@ static int mag_auth(request_rec *req)
     if (!input.value) goto done;
     input.length = apr_base64_decode(input.value, auth_header_value);
 
-    maj = gss_accept_sec_context(&min, pctx, GSS_C_NO_CREDENTIAL,
+#ifdef HAVE_GSS_ACQUIRE_CRED_FROM
+    if (cfg->use_s4u2proxy) {
+        maj = gss_acquire_cred_from(&min, GSS_C_NO_NAME, 0,
+                                    GSS_C_NO_OID_SET, GSS_C_BOTH,
+                                    cfg->cred_store, &acquired_cred,
+                                    NULL, NULL);
+        if (GSS_ERROR(maj)) {
+            ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, req,
+                          mag_error(req, "gss_acquire_cred_from() failed",
+                                    maj, min));
+            goto done;
+        }
+    }
+#endif
+
+    maj = gss_accept_sec_context(&min, pctx, acquired_cred,
                                  &input, GSS_C_NO_CHANNEL_BINDINGS,
                                  &client, &mech_type, &output, &flags, &vtime,
                                  &delegated_cred);
@@ -234,16 +283,6 @@ static int mag_auth(request_rec *req)
         goto done;
     }
 
-#ifdef HAVE_GSS_STORE_CRED_INTO
-    if (cfg->cred_store.count != 0 && delegated_cred != GSS_C_NO_CREDENTIAL) {
-        gss_key_value_set_desc store = {0, NULL};
-        /* FIXME: run substitutions */
-
-        maj = gss_store_cred_into(&min, delegated_cred, GSS_C_INITIATE,
-                                  GSS_C_NULL_OID, 1, 1, &store, NULL, NULL);
-    }
-#endif
-
     req->ap_auth_type = apr_pstrdup(req->pool, "Negotiate");
 
     /* Always set the GSS name in an env var */
@@ -256,6 +295,19 @@ static int mag_auth(request_rec *req)
     }
     clientname = apr_pstrndup(req->pool, name.value, name.length);
     apr_table_set(req->subprocess_env, "GSS_NAME", clientname);
+
+#ifdef HAVE_GSS_STORE_CRED_INTO
+    if (cfg->deleg_ccache_dir && delegated_cred != GSS_C_NO_CREDENTIAL) {
+        char *ccachefile = NULL;
+
+        mag_store_deleg_creds(req, cfg->deleg_ccache_dir, clientname,
+                              delegated_cred, &ccachefile);
+
+        if (ccachefile) {
+            apr_table_set(req->subprocess_env, "KRB5CCNAME", ccachefile);
+        }
+    }
+#endif
 
     if (cfg->map_to_local) {
         maj = gss_localname(&min, client, mech_type, &lname);
@@ -346,6 +398,21 @@ static const char *mag_use_sess(cmd_parms *parms, void *mconfig, int on)
     return NULL;
 }
 
+static const char *mag_use_s4u2p(cmd_parms *parms, void *mconfig, int on)
+{
+    struct mag_config *cfg = (struct mag_config *)mconfig;
+    cfg->use_s4u2proxy = on ? true : false;
+
+    if (cfg->deleg_ccache_dir == NULL) {
+        cfg->deleg_ccache_dir = apr_pstrdup(parms->pool, "/tmp");
+        if (!cfg->deleg_ccache_dir) {
+            ap_log_error(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0,
+                         parms->server, "%s", "OOM setting deleg_ccache_dir.");
+        }
+    }
+    return NULL;
+}
+
 static const char *mag_sess_key(cmd_parms *parms, void *mconfig, const char *w)
 {
     struct mag_config *cfg = (struct mag_config *)mconfig;
@@ -387,6 +454,8 @@ static const char *mag_sess_key(cmd_parms *parms, void *mconfig, const char *w)
     return NULL;
 }
 
+#define MAX_CRED_OPTIONS 10
+
 static const char *mag_cred_store(cmd_parms *parms, void *mconfig,
                                   const char *w)
 {
@@ -413,22 +482,49 @@ static const char *mag_cred_store(cmd_parms *parms, void *mconfig,
         return NULL;
     }
 
-    size = sizeof(gss_key_value_element_desc) * cfg->cred_store.count + 1;
-    elements = apr_palloc(parms->pool, size);
-    if (!elements) {
-        ap_log_error(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, parms->server,
-                     "%s", "OOM handling GssapiCredStore option");
-        return NULL;
+    if (!cfg->cred_store) {
+        cfg->cred_store = apr_pcalloc(parms->pool,
+                                      sizeof(gss_key_value_set_desc));
+        if (!cfg->cred_store) {
+            ap_log_error(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, parms->server,
+                         "%s", "OOM handling GssapiCredStore option");
+            return NULL;
+        }
+        size = sizeof(gss_key_value_element_desc) * MAX_CRED_OPTIONS;
+        cfg->cred_store->elements = apr_palloc(parms->pool, size);
+        if (!cfg->cred_store->elements) {
+            ap_log_error(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, parms->server,
+                         "%s", "OOM handling GssapiCredStore option");
+        }
     }
 
-    for (count = 0; count < cfg->cred_store.count; count++) {
-        elements[count] = cfg->cred_store.elements[count];
+    elements = cfg->cred_store->elements;
+    count = cfg->cred_store->count;
+
+    if (count >= MAX_CRED_OPTIONS) {
+        ap_log_error(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, parms->server,
+                     "Too many GssapiCredStore options (MAX: %d)",
+                     MAX_CRED_OPTIONS);
+        return NULL;
     }
+    cfg->cred_store->count++;
+
     elements[count].key = key;
     elements[count].value = value;
 
-    cfg->cred_store.elements = elements;
-    cfg->cred_store.count = count;
+    return NULL;
+}
+
+static const char *mag_deleg_ccache_dir(cmd_parms *parms, void *mconfig,
+                                        const char *value)
+{
+    struct mag_config *cfg = (struct mag_config *)mconfig;
+
+    cfg->deleg_ccache_dir = apr_pstrdup(parms->pool, value);
+    if (!cfg->deleg_ccache_dir) {
+        ap_log_error(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, parms->server,
+                     "%s", "OOM handling GssapiDelegCcacheDir option");
+    }
 
     return NULL;
 }
@@ -444,8 +540,16 @@ static const command_rec mag_commands[] = {
                   "Authentication uses mod_sessions to hold status"),
     AP_INIT_RAW_ARGS("GssapiSessionKey", mag_sess_key, NULL, OR_AUTHCFG,
                      "Key Used to seal session data."),
+#ifdef HAVE_GSS_ACQUIRE_CRED_FROM
+    AP_INIT_FLAG("GssapiUseS4U2Proxy", mag_use_s4u2p, NULL, OR_AUTHCFG,
+                  "Initializes credentials for s4u2proxy usage"),
+#endif
+#ifdef HAVE_GSS_STORE_CRED_INTO
     AP_INIT_ITERATE("GssapiCredStore", mag_cred_store, NULL, OR_AUTHCFG,
                     "Credential Store"),
+    AP_INIT_RAW_ARGS("GssapiDelegCcacheDir", mag_deleg_ccache_dir, NULL,
+                     OR_AUTHCFG, "Directory to store delegated credentials"),
+#endif
     { NULL }
 };
 

@@ -39,7 +39,9 @@ struct mag_config {
     bool map_to_local;
     bool gss_conn_ctx;
     bool use_sessions;
-    gss_key_value_set_desc cred_store;
+    bool use_s4u2proxy;
+    char *deleg_ccache_dir;
+    gss_key_value_set_desc *cred_store;
     struct seal_key *mag_skey;
 };
 
