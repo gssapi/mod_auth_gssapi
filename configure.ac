@@ -4,7 +4,7 @@ AC_CONFIG_SRCDIR([src/mod_auth_gssapi.c])
 AM_INIT_AUTOMAKE([-Wall foreign subdir-objects tar-pax])
 m4_ifdef([AM_PROG_AR], [AM_PROG_AR])
 AC_CONFIG_MACRO_DIR([m4])
-AC_CONFIG_HEADERS([config.h])
+AC_CONFIG_HEADERS([src/config.h])
 
 # Checks for programs.
 AC_PROG_CC

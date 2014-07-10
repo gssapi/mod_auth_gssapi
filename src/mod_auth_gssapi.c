@@ -22,29 +22,11 @@
    DEALINGS IN THE SOFTWARE.
 */
 
-#include <stdbool.h>
-#include <stdint.h>
-#include <gssapi/gssapi.h>
-#include <gssapi/gssapi_ext.h>
-
-#include <httpd.h>
-#include <http_core.h>
-#include <http_connection.h>
-#include <http_log.h>
-#include <http_request.h>
-#include <apr_strings.h>
-#include <apr_base64.h>
+#include "mod_auth_gssapi.h"
 
 module AP_MODULE_DECLARE_DATA auth_gssapi_module;
 
 APR_DECLARE_OPTIONAL_FN(int, ssl_is_https, (conn_rec *));
-
-struct mag_config {
-    bool ssl_only;
-    bool map_to_local;
-    bool gss_conn_ctx;
-    gss_key_value_set_desc cred_store;
-};
 
 static char *mag_status(request_rec *req, int type, uint32_t err)
 {
@@ -243,7 +225,7 @@ static int mag_auth(request_rec *req)
     }
 
 #ifdef HAVE_GSS_STORE_CRED_INTO
-    if (cfg->cred_store && delegated_cred != GSS_C_NO_CREDENTIAL) {
+    if (cfg->cred_store.count != 0 && delegated_cred != GSS_C_NO_CREDENTIAL) {
         gss_key_value_set_desc store = {0, NULL};
         /* FIXME: run substitutions */
 
