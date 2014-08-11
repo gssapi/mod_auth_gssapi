@@ -1,3 +1,5 @@
+EXTRA_DIST = mod_auth_gssapi.c sessions.c crypto.c mod_auth_gssapi.h sessions.h crypto.h
+
 all-local:
 	@APXS@ -c ${LIBS} ${CFLAGS} mod_auth_gssapi.c sessions.c crypto.c
 
