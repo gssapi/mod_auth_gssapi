@@ -27,8 +27,8 @@ make %{?_smp_mflags}
 
 
 %install
-make install DESTDIR=%{buildroot}%{_httpd_moddir}
-install -m 755 .libs/%{name}.so %{buildroot}%{_httpd_moddir}
+mkdir -p %{buildroot}%{_httpd_moddir}
+install -m 755 src/.libs/%{name}.so %{buildroot}%{_httpd_moddir}
 
 # Apache configuration for the module
 echo "LoadModule auth_gssapi_module modules/mod_auth_gssapi.so" > 10-auth_gssapi.conf
