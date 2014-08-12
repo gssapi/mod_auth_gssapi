@@ -140,7 +140,7 @@ static void mag_store_deleg_creds(request_rec *req,
     maj = gss_store_cred_into(&min, delegated_cred, GSS_C_INITIATE,
                               GSS_C_NULL_OID, 1, 1, &store, NULL, NULL);
     if (GSS_ERROR(maj)) {
-        ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, req,
+        ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, req, "%s",
                       mag_error(req, "failed to store delegated creds",
                                 maj, min));
     }
@@ -250,7 +250,7 @@ static int mag_auth(request_rec *req)
                                     cfg->cred_store, &acquired_cred,
                                     NULL, NULL);
         if (GSS_ERROR(maj)) {
-            ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, req,
+            ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, req, "%s",
                           mag_error(req, "gss_acquire_cred_from() failed",
                                     maj, min));
             goto done;
@@ -263,7 +263,7 @@ static int mag_auth(request_rec *req)
                                  &client, &mech_type, &output, &flags, &vtime,
                                  &delegated_cred);
     if (GSS_ERROR(maj)) {
-        ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, req,
+        ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, req, "%s",
                       mag_error(req, "gss_accept_sec_context() failed",
                                 maj, min));
         goto done;
@@ -288,7 +288,7 @@ static int mag_auth(request_rec *req)
     /* Always set the GSS name in an env var */
     maj = gss_display_name(&min, client, &name, NULL);
     if (GSS_ERROR(maj)) {
-        ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, req,
+        ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, req, "%s",
                       mag_error(req, "gss_accept_sec_context() failed",
                                 maj, min));
         goto done;
@@ -312,7 +312,7 @@ static int mag_auth(request_rec *req)
     if (cfg->map_to_local) {
         maj = gss_localname(&min, client, mech_type, &lname);
         if (maj != GSS_S_COMPLETE) {
-            ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, req,
+            ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, req, "%s",
                           mag_error(req, "gss_localname() failed", maj, min));
             goto done;
         }
