@@ -13,7 +13,7 @@ Requires:       httpd-mmn = %{_httpd_mmn}
 Requires:       krb5-libs >= 1.11.5
 
 %description
-The modauht_gssapi module is an authentication service that implements the
+The mod_auth_gssapi module is an authentication service that implements the
 SPNEGO based HTTP Authentication protocol defined in RFC4559.
 
 %prep
