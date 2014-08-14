@@ -533,7 +533,7 @@ static const command_rec mag_commands[] = {
     AP_INIT_FLAG("GssapiSSLonly", mag_ssl_only, NULL, OR_AUTHCFG,
                   "Work only if connection is SSL Secured"),
     AP_INIT_FLAG("GssapiLocalName", mag_map_to_local, NULL, OR_AUTHCFG,
-                  "Work only if connection is SSL Secured"),
+                  "Translate principals to local names"),
     AP_INIT_FLAG("GssapiConnectionBound", mag_conn_ctx, NULL, OR_AUTHCFG,
                   "Authentication is bound to the TCP connection"),
     AP_INIT_FLAG("GssapiUseSessions", mag_use_sess, NULL, OR_AUTHCFG,
