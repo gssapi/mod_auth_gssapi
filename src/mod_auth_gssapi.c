@@ -24,6 +24,7 @@
 
 #include "mod_auth_gssapi.h"
 
+#define MOD_AUTH_GSSAPI_VERSION PACKAGE_NAME "/" PACKAGE_VERSION
 
 module AP_MODULE_DECLARE_DATA auth_gssapi_module;
 
@@ -78,6 +79,7 @@ static int mag_post_config(apr_pool_t *cfgpool, apr_pool_t *log,
     /* FIXME: create mutex to deal with connections and contexts ? */
     mag_is_https = APR_RETRIEVE_OPTIONAL_FN(ssl_is_https);
     mag_post_config_session();
+    ap_add_version_component(cfgpool, MOD_AUTH_GSSAPI_VERSION);
 
     return OK;
 }
