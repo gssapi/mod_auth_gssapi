@@ -49,6 +49,10 @@ AS_IF([test "x${APR}" != "x" -a -x "${APR}"],
        AC_SUBST(APR_LDFLAGS)],
       [AC_MSG_FAILURE(["apr-1-config not found. Use --with-apr"])])
 
+PKG_CHECK_MODULES([OPENSSL], [openssl])
+AC_SUBST([OPENSSL_CFLAGS])
+AC_SUBST([OPENSSL_LIBS])
+
 AC_CHECK_HEADERS([gssapi/gssapi.h],,[AC_MSG_ERROR([Could not find GSSAPI headers])])
 AC_PATH_PROG(KRB5_CONFIG, krb5-config, failed)
 if test x$KRB5_CONFIG = xfailed; then
@@ -65,8 +69,8 @@ AC_CHECK_FUNCS(gss_store_cred_into)
 AC_SUBST([GSSAPI_CFLAGS])
 AC_SUBST([GSSAPI_LIBS])
 
-CFLAGS="`${APXS} -q CFLAGS` `${APR} --cflags` ${GSSAPI_CFLAGS} -I`${APXS} -q INCLUDEDIR` -I`${APR} --includes`"
-LIBS="`${APR} --link-libtool --libs` ${GSSAPI_LIBS}"
+CFLAGS="`${APXS} -q CFLAGS` `${APR} --cflags` ${GSSAPI_CFLAGS} ${OPENSSL_CFLAGS} -I`${APXS} -q INCLUDEDIR` -I`${APR} --includes`"
+LIBS="`${APR} --link-libtool --libs` ${GSSAPI_LIBS} ${OPENSSL_LIBS}"
 
 AC_CONFIG_FILES([Makefile src/Makefile])
 
