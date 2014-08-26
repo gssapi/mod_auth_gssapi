@@ -166,6 +166,7 @@ static int mag_auth(request_rec *req)
     gss_name_t client = GSS_C_NO_NAME;
     gss_cred_id_t acquired_cred = GSS_C_NO_CREDENTIAL;
     gss_cred_id_t delegated_cred = GSS_C_NO_CREDENTIAL;
+    gss_cred_usage_t cred_usage = GSS_C_ACCEPT;
     uint32_t flags;
     uint32_t vtime;
     uint32_t maj, min;
@@ -247,8 +248,11 @@ static int mag_auth(request_rec *req)
 
 #ifdef HAVE_GSS_ACQUIRE_CRED_FROM
     if (cfg->use_s4u2proxy) {
+        cred_usage = GSS_C_BOTH;
+    }
+    if (cfg->cred_store) {
         maj = gss_acquire_cred_from(&min, GSS_C_NO_NAME, 0,
-                                    GSS_C_NO_OID_SET, GSS_C_BOTH,
+                                    GSS_C_NO_OID_SET, cred_usage,
                                     cfg->cred_store, &acquired_cred,
                                     NULL, NULL);
         if (GSS_ERROR(maj)) {
