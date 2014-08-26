@@ -1,3 +1,174 @@
+mod_auth_gssapi
+===============
+
+Intro
+-----
+
 This module has been built as a replacement for the aging mod_auth_kerb.
 It's aim is to use only GSSAPI calls and be as much as possible agnostic
 of the actual mechanism used.
+
+Dependencies
+------------
+
+A modern version of MIT's Krb5 distribution or any GSSAPI implementation
+that supports the [credential store
+extension](http://k5wiki.kerberos.org/wiki/Projects/Credential_Store_extensions)
+is necessary to achieve full functionality. Reduced functionality is
+provided without these extensions.
+
+krb5 (>=1.11)
+Apache (>=2.4)
+
+Installation
+------------
+
+./configure
+make
+make install
+
+
+Configuration
+-------------
+
+Apache authentication modules are usually configured per location, see the
+[mod_authn_core](https://httpd.apache.org/docs/2.4/mod/mod_authn_core.html)
+documentation for the common directives
+
+### Basic configuration
+
+The simplest configuration scheme specifies just one directive, which is the
+location of the keytab.
+
+#### Example
+<Location /private>
+    AuthType GSSAPI
+    AuthName "GSSAPI Single Sign On Login"
+    GssapiCredStore keytab:/etc/httpd.keytab
+    Require valid-user
+</Location>
+
+Your Apache server need read access to the keytab configured.
+If your Kerberos implementation does not support the credential store
+extensions you can also simply set the KRB5_KTNAME environment variable in the
+Apache init script and skip the GssapiCredStore option completely.
+
+
+Configuration Directives
+------------------------
+
+### GssapiSSLonly
+
+Forces the authentication attempt to fail if the connection is not being
+established over TLS
+
+Example:
+    GssapiSSLonly On
+
+
+### GssapiLocalName
+
+Tries to map the client principal to a local name using the gss_localname()
+call. This requires configuration in the /etc/krb5.conf file in order to allow
+proper mapping for principals not in the default realm (for example a user
+coming from a trusted realm).
+See the 'auth_to_local' option in the [realms] section of krb5.conf(5)
+
+When this options is used the resolved name is set in the REMOTE_USER variable
+however the complete client principal name is also made available in the
+GSS_NAME variable.
+
+Example:
+    GssapiLocalName on
+
+
+### GssapiConnectionBound
+
+When using GSS mechanisms that require more than one round-trip to complete
+authentication (like NTLMSSP) it is necessary to bind to the authentication to
+the connection in order to keep the state between round-trips. With this option
+enable incomplete context are store in the connection and retrieved on the next
+request for continuation.
+When using this option you may also ant to set the Persistent-Auth header for
+those clients that make use of it.
+
+Example:
+    GssapiConnectionBound On
+    Header set Persistent-Auth "true"
+
+
+### GssapiUseSessions
+
+In order to avoid constant and costly re-authentication attempts for every
+request, mod_auth_gssapi offers a cookie based session method to maintain
+authentication across multiple requests. GSSAPI uses the mod_sessions module
+to handle cookies so that module needs to be activated and configured.
+GSSAPI uses a secured (encrypted + MAC-ed) payload to maintain state in the
+session cookie. The session cookie lifetime depends on the lifetime of the
+GSSAPI session established at authentication.
+NOTE: It is important to correctly set the SessionCookieName option.
+See the
+[mod_sessions](http://httpd.apache.org/docs/current/mod/mod_session.html)
+documentation for more information.
+
+Example:
+    GssapiUseSessions On
+    Session On
+    SessionCookieName gssapi_session path=/private;httponly;secure;
+
+
+### GssapiSessionKey
+
+When GssapiUseSessions is enabled a key use to encrypt and MAC the session
+data will be automatically generated at startup, this means session data will
+become unreadable if the server is restarted or multiple serves are used and
+the client is load balanced from one to another. To obviate this problem the
+admin can choose to install a permanent key in the configuration so that
+session data remain accessible after a restart or by multiple servers
+sharing the same key.
+
+The key must be a base64 encoded raw key of 32 bytes of length.
+
+Example:
+    GssapiSessionKey key:VGhpcyBpcyBhIDMyIGJ5dGUgbG9uZyBzZWNyZXQhISE=
+
+
+### GssapiCredStore
+
+The GssapiCredStore option allows to specify multiple credential related
+options like keytab location, client_keytab location, ccache location etc.
+
+Example:
+    GssapiCredStore keytab:/etc/httpd.keytab
+    GssapiCredStore ccache:FILE:/var/run/httpd/krb5ccache
+
+
+### GssapiDelegCcacheDir
+
+If delegation of credentials is desired credentials can be exported in a
+private directory accessible by the Apache process.
+The delegated credentials will be stored in a file named after the client
+principal and the subprocess environment variable KRB5CCNAME will be set
+to point to that file.
+
+Example:
+    GssapiDelegCcacheDir = /var/run/httpd/clientcaches
+
+
+A user foo@EXAMPLE.COM delegating its credentials would cause the server to
+create a ccache file named /var/run/httpd/clientcaches/foo@EXAMPLE.COM
+
+### GssapiUseS4U2Proxy
+
+Enables the use of the s4u2Proxy Kerberos extension also known as
+[constrained delegation](https://ssimo.org/blog/id_011.html)
+This option allows an application running within Apache to operate on
+behalf of the user against other servers by using the provided ticket
+(subject to KDC authorization).
+This options requires GssapiDelegCcacheDir to be set. The ccache will be
+populated with the user's provided ticket which is later used as evidence
+ticket by the application.
+
+Example:
+    GssapiUseS4U2Proxy On
+    GssapiDelegCcacheDir = /var/run/httpd/clientcaches
