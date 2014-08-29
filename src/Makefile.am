@@ -1,7 +1,7 @@
 EXTRA_DIST = mod_auth_gssapi.c sessions.c crypto.c mod_auth_gssapi.h sessions.h crypto.h
 
 all-local:
-	@APXS@ -c ${LIBS} ${CFLAGS} mod_auth_gssapi.c sessions.c crypto.c
+	@APXS@ -c ${LIBS} mod_auth_gssapi.c sessions.c crypto.c
 
 install-exec-local:
 	if test ! -d ${APXS_LIBEXECDIR}; then mkdir -p ${APXS_LIBEXECDIR}; fi

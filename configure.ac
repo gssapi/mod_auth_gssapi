@@ -70,7 +70,7 @@ AC_SUBST([GSSAPI_CFLAGS])
 AC_SUBST([GSSAPI_LIBS])
 
 CFLAGS="`${APXS} -q CFLAGS` `${APR} --cflags` ${GSSAPI_CFLAGS} ${OPENSSL_CFLAGS} -I`${APXS} -q INCLUDEDIR` -I`${APR} --includes`"
-LIBS="`${APR} --link-libtool --libs` ${GSSAPI_LIBS} ${OPENSSL_LIBS}"
+LIBS="`${APR} --libs` ${GSSAPI_LIBS} ${OPENSSL_LIBS}"
 
 AC_CONFIG_FILES([Makefile src/Makefile])
 
