@@ -69,8 +69,15 @@ AC_CHECK_FUNCS(gss_store_cred_into)
 AC_SUBST([GSSAPI_CFLAGS])
 AC_SUBST([GSSAPI_LIBS])
 
-CFLAGS="`${APXS} -q CFLAGS` `${APR} --cflags` ${GSSAPI_CFLAGS} ${OPENSSL_CFLAGS} -I`${APXS} -q INCLUDEDIR` -I`${APR} --includes`"
-LIBS="`${APR} --libs` ${GSSAPI_LIBS} ${OPENSSL_LIBS}"
+MAG_CFLAGS="`${APXS} -q CFLAGS` `${APR} --cflags` ${GSSAPI_CFLAGS} ${OPENSSL_CFLAGS} -I`${APXS} -q INCLUDEDIR` `${APR} --includes`"
+MAG_LIBS="`${APR} --libs` ${GSSAPI_LIBS} ${OPENSSL_LIBS}"
+LIBTOOL="`${APXS} -q LIBTOOL`"
+MAG_LIBDIR="`${APXS} -q libexecdir`"
+
+AC_SUBST([MAG_CFLAGS])
+AC_SUBST([MAG_LIBS])
+AC_SUBST([LIBTOOL])
+AC_SUBST([MAG_LIBDIR])
 
 AC_CONFIG_FILES([Makefile src/Makefile])
 
