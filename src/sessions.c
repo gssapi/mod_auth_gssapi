@@ -2,6 +2,8 @@
 
 #include "mod_auth_gssapi.h"
 
+APLOG_USE_MODULE(auth_gssapi);
+
 static APR_OPTIONAL_FN_TYPE(ap_session_load) *mag_sess_load_fn = NULL;
 static APR_OPTIONAL_FN_TYPE(ap_session_get) *mag_sess_get_fn = NULL;
 static APR_OPTIONAL_FN_TYPE(ap_session_set) *mag_sess_set_fn = NULL;
