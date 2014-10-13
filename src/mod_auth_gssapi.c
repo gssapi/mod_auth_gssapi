@@ -209,7 +209,9 @@ static int mag_auth(request_rec *req)
     }
 
     /* if available, session always supersedes connection bound data */
-    mag_check_session(req, cfg, &mc);
+    if (cfg->use_sessions) {
+        mag_check_session(req, cfg, &mc);
+    }
 
     if (mc) {
         /* register the context in the memory pool, so it can be freed
@@ -335,7 +337,9 @@ static int mag_auth(request_rec *req)
             vtime = MIN_SESS_EXP_TIME;
         }
         mc->expiration = time(NULL) + vtime;
-        mag_attempt_session(req, cfg, mc);
+        if (cfg->use_sessions) {
+            mag_attempt_session(req, cfg, mc);
+        }
     }
 
     ret = OK;
