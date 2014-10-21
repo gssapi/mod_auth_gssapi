@@ -299,7 +299,7 @@ static int mag_auth(request_rec *req)
     maj = gss_display_name(&min, client, &name, NULL);
     if (GSS_ERROR(maj)) {
         ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, req, "%s",
-                      mag_error(req, "gss_accept_sec_context() failed",
+                      mag_error(req, "gss_display_name() failed",
                                 maj, min));
         goto done;
     }
