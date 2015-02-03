@@ -85,10 +85,11 @@ done:
 apr_status_t SEAL_BUFFER(apr_pool_t *p, struct seal_key *skey,
                          struct databuf *plain, struct databuf *cipher)
 {
+    int blksz = skey->cipher->block_size;
     apr_status_t err = EFAULT;
     EVP_CIPHER_CTX ctx = { 0 };
     HMAC_CTX hmac_ctx = { 0 };
-    uint8_t rbuf[16];
+    uint8_t rbuf[blksz];
     unsigned int len;
     int outlen, totlen;
     int ret;
@@ -97,12 +98,12 @@ apr_status_t SEAL_BUFFER(apr_pool_t *p, struct seal_key *skey,
 
     /* confounder to avoid exposing random numbers directly to clients
      * as IVs */
-    ret = RAND_bytes(rbuf, 16);
+    ret = RAND_bytes(rbuf, sizeof(rbuf));
     if (ret == 0) goto done;
 
     if (cipher->length == 0) {
         /* add space for confounder and padding and MAC */
-        cipher->length = (plain->length / 16 + 2) * 16;
+        cipher->length = (plain->length / blksz + 2) * blksz;
         cipher->value = apr_palloc(p, cipher->length + skey->md->md_size);
         if (!cipher->value) {
             err = ENOMEM;
@@ -115,7 +116,7 @@ apr_status_t SEAL_BUFFER(apr_pool_t *p, struct seal_key *skey,
     totlen = 0;
 
     outlen = cipher->length;
-    ret = EVP_EncryptUpdate(&ctx, cipher->value, &outlen, rbuf, 16);
+    ret = EVP_EncryptUpdate(&ctx, cipher->value, &outlen, rbuf, sizeof(rbuf));
     if (ret == 0) goto done;
     totlen += outlen;
 
@@ -214,8 +215,8 @@ apr_status_t UNSEAL_BUFFER(apr_pool_t *p, struct seal_key *skey,
 
     totlen += outlen;
     /* now remove the confounder */
-    totlen -= 16;
-    memmove(plain->value, plain->value + 16, totlen);
+    totlen -= skey->cipher->block_size;
+    memmove(plain->value, plain->value + skey->cipher->block_size, totlen);
 
     plain->length = totlen;
     err = 0;
