@@ -362,6 +362,7 @@ done:
                           "WWW-Authenticate", "Negotiate");
         }
     }
+    gss_release_cred(&min, &acquired_cred);
     gss_release_cred(&min, &delegated_cred);
     gss_release_buffer(&min, &output);
     gss_release_name(&min, &client);
