@@ -43,6 +43,11 @@ struct mag_config {
     char *deleg_ccache_dir;
     gss_key_value_set_desc *cred_store;
     struct seal_key *mag_skey;
+    enum {
+        BA_OFF = 0,
+        BA_FORWARD = 1,
+        BA_ON = 2
+    } basic_auth;
 };
 
 struct mag_conn {
@@ -52,4 +57,5 @@ struct mag_conn {
     const char *user_name;
     const char *gss_name;
     time_t expiration;
+    const char *auth_type;
 };

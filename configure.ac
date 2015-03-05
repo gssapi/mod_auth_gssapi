@@ -65,6 +65,7 @@ AC_CHECK_LIB([gssapi_krb5], [gss_accept_sec_context], [],
              [AC_MSG_ERROR([GSSAPI library check failed])])
 AC_CHECK_FUNCS(gss_acquire_cred_from)
 AC_CHECK_FUNCS(gss_store_cred_into)
+AC_CHECK_FUNCS(gss_acquire_cred_with_password)
 
 AC_SUBST([GSSAPI_CFLAGS])
 AC_SUBST([GSSAPI_LIBS])

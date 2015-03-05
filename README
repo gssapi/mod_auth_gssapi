@@ -172,3 +172,13 @@ ticket by the application.
 Example:
     GssapiUseS4U2Proxy On
     GssapiDelegCcacheDir = /var/run/httpd/clientcaches
+
+
+### GssapiBasicAuth
+Allows the use of Basic Auth in conjunction with Negotiate.
+Two modes are supported, direct usage of the received username and password
+to try to acquire credentials via GSSAPI, or forwarding to following apache
+module.
+
+Example:
+    GssapiBasicAuth Forward

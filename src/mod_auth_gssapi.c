@@ -155,6 +155,7 @@ static void mag_store_deleg_creds(request_rec *req,
 static int mag_auth(request_rec *req)
 {
     const char *type;
+    const char *auth_type;
     struct mag_config *cfg;
     const char *auth_header;
     char *auth_header_type;
@@ -166,6 +167,7 @@ static int mag_auth(request_rec *req)
     gss_buffer_desc output = GSS_C_EMPTY_BUFFER;
     gss_buffer_desc name = GSS_C_EMPTY_BUFFER;
     gss_name_t client = GSS_C_NO_NAME;
+    gss_cred_id_t user_cred = GSS_C_NO_CREDENTIAL;
     gss_cred_id_t acquired_cred = GSS_C_NO_CREDENTIAL;
     gss_cred_id_t delegated_cred = GSS_C_NO_CREDENTIAL;
     gss_cred_usage_t cred_usage = GSS_C_ACCEPT;
@@ -178,6 +180,9 @@ static int mag_auth(request_rec *req)
     gss_OID mech_type = GSS_C_NO_OID;
     gss_buffer_desc lname = GSS_C_EMPTY_BUFFER;
     struct mag_conn *mc = NULL;
+    bool is_basic = false;
+    gss_ctx_id_t user_ctx = GSS_C_NO_CONTEXT;
+    gss_name_t server = GSS_C_NO_NAME;
 
     type = ap_auth_type(req);
     if ((type == NULL) || (strcasecmp(type, "GSSAPI") != 0)) {
@@ -225,7 +230,7 @@ static int mag_auth(request_rec *req)
             ap_log_rerror(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, req,
                           "Already established context found!");
             apr_table_set(req->subprocess_env, "GSS_NAME", mc->gss_name);
-            req->ap_auth_type = apr_pstrdup(req->pool, "Negotiate");
+            req->ap_auth_type = apr_pstrdup(req->pool, mc->auth_type);
             req->user = apr_pstrdup(req->pool, mc->user_name);
             ret = OK;
             goto done;
@@ -241,21 +246,81 @@ static int mag_auth(request_rec *req)
     auth_header_type = ap_getword_white(req->pool, &auth_header);
     if (!auth_header_type) goto done;
 
-    if (strcasecmp(auth_header_type, "Negotiate") != 0) goto done;
+    if (strcasecmp(auth_header_type, "Negotiate") == 0) {
+        auth_type = "Negotiate";
 
-    auth_header_value = ap_getword_white(req->pool, &auth_header);
-    if (!auth_header_value) goto done;
-    input.length = apr_base64_decode_len(auth_header_value) + 1;
-    input.value = apr_pcalloc(req->pool, input.length);
-    if (!input.value) goto done;
-    input.length = apr_base64_decode(input.value, auth_header_value);
+        auth_header_value = ap_getword_white(req->pool, &auth_header);
+        if (!auth_header_value) goto done;
+        input.length = apr_base64_decode_len(auth_header_value) + 1;
+        input.value = apr_pcalloc(req->pool, input.length);
+        if (!input.value) goto done;
+        input.length = apr_base64_decode(input.value, auth_header_value);
+    } else if (strcasecmp(auth_header_type, "Basic") == 0) {
+        auth_type = "Basic";
+        is_basic = true;
+
+        gss_buffer_desc ba_user;
+        gss_buffer_desc ba_pwd;
+
+        switch (cfg->basic_auth) {
+        case BA_ON:
+            /* handle directly */
+            break;
+        case BA_FORWARD:
+            /* decline to handle ourselves, let other modules do it */
+            ret = DECLINED;
+            goto done;
+        case BA_OFF:
+            goto done;
+        default:
+            goto done;
+        }
+        ba_pwd.value = ap_pbase64decode(req->pool, auth_header);
+        if (!ba_pwd.value) goto done;
+        ba_user.value = ap_getword_nulls_nc(req->pool,
+                                            (char **)&ba_pwd.value, ':');
+        if (!ba_user.value) goto done;
+        if (((char *)ba_user.value)[0] == '\0' ||
+            ((char *)ba_pwd.value)[0] == '\0') {
+            ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, req,
+                          "Invalid empty user or password for Basic Auth");
+            goto done;
+        }
+        ba_user.length = strlen(ba_user.value);
+        ba_pwd.length = strlen(ba_pwd.value);
+        maj = gss_import_name(&min, &ba_user, GSS_C_NT_USER_NAME, &client);
+        if (GSS_ERROR(maj)) {
+            ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, req,
+                          "In Basic Auth, %s",
+                          mag_error(req, "gss_import_name() failed",
+                                    maj, min));
+            goto done;
+        }
+        maj = gss_acquire_cred_with_password(&min, client, &ba_pwd,
+                                             GSS_C_INDEFINITE,
+                                             GSS_C_NO_OID_SET,
+                                             GSS_C_INITIATE,
+                                             &user_cred, NULL, NULL);
+        if (GSS_ERROR(maj)) {
+            ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, req,
+                          "In Basic Auth, %s",
+                          mag_error(req, "gss_acquire_cred_with_password() "
+                                    "failed", maj, min));
+            goto done;
+        }
+        gss_release_name(&min, &client);
+    } else {
+        goto done;
+    }
+
+    req->ap_auth_type = apr_pstrdup(req->pool, auth_type);
 
 #ifdef HAVE_GSS_ACQUIRE_CRED_FROM
     if (cfg->use_s4u2proxy) {
         cred_usage = GSS_C_BOTH;
     }
     if (cfg->cred_store) {
-        maj = gss_acquire_cred_from(&min, GSS_C_NO_NAME, 0,
+        maj = gss_acquire_cred_from(&min, GSS_C_NO_NAME, GSS_C_INDEFINITE,
                                     GSS_C_NO_OID_SET, cred_usage,
                                     cfg->cred_store, &acquired_cred,
                                     NULL, NULL);
@@ -268,6 +333,40 @@ static int mag_auth(request_rec *req)
     }
 #endif
 
+    if (is_basic) {
+        if (!acquired_cred) {
+            /* Try to acquire default creds */
+            maj = gss_acquire_cred(&min, GSS_C_NO_NAME, GSS_C_INDEFINITE,
+                                   GSS_C_NO_OID_SET, cred_usage,
+                                   &acquired_cred, NULL, NULL);
+            if (GSS_ERROR(maj)) {
+                ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, req,
+                              "%s", mag_error(req, "gss_acquire_cred_from()"
+                                              " failed", maj, min));
+                goto done;
+            }
+        }
+        maj = gss_inquire_cred(&min, acquired_cred, &server,
+                               NULL, NULL, NULL);
+        if (GSS_ERROR(maj)) {
+            ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, req,
+                          "%s", mag_error(req, "gss_inquired_cred_() "
+                                          "failed", maj, min));
+            goto done;
+        }
+        /* output and input are inverted here, this is intentional */
+        maj = gss_init_sec_context(&min, user_cred, &user_ctx, server,
+                                   GSS_C_NO_OID, 0, 300,
+                                   GSS_C_NO_CHANNEL_BINDINGS, &output,
+                                   NULL, &input, NULL, NULL);
+        if (GSS_ERROR(maj)) {
+            ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, req,
+                          "%s", mag_error(req, "gss_init_sec_context() "
+                                          "failed", maj, min));
+            goto done;
+        }
+    }
+
     maj = gss_accept_sec_context(&min, pctx, acquired_cred,
                                  &input, GSS_C_NO_CHANNEL_BINDINGS,
                                  &client, &mech_type, &output, &flags, &vtime,
@@ -278,8 +377,33 @@ static int mag_auth(request_rec *req)
                                 maj, min));
         goto done;
     }
-
-    if (maj == GSS_S_CONTINUE_NEEDED) {
+    if (is_basic) {
+        while (maj == GSS_S_CONTINUE_NEEDED) {
+            gss_release_buffer(&min, &input);
+            /* output and input are inverted here, this is intentional */
+            maj = gss_init_sec_context(&min, user_cred, &user_ctx, server,
+                                       GSS_C_NO_OID, 0, 300,
+                                       GSS_C_NO_CHANNEL_BINDINGS, &output,
+                                       NULL, &input, NULL, NULL);
+            if (GSS_ERROR(maj)) {
+                ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, req,
+                              "%s", mag_error(req, "gss_init_sec_context() "
+                                              "failed", maj, min));
+                goto done;
+            }
+            gss_release_buffer(&min, &output);
+            maj = gss_accept_sec_context(&min, pctx, acquired_cred,
+                                         &input, GSS_C_NO_CHANNEL_BINDINGS,
+                                         &client, &mech_type, &output, &flags,
+                                         &vtime, &delegated_cred);
+            if (GSS_ERROR(maj)) {
+                ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, req,
+                              "%s", mag_error(req, "gss_accept_sec_context()"
+                                              " failed", maj, min));
+                goto done;
+            }
+        }
+    } else if (maj == GSS_S_CONTINUE_NEEDED) {
         if (!mc) {
             ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, req,
                           "Mechanism needs continuation but neither "
@@ -292,8 +416,6 @@ static int mag_auth(request_rec *req)
         /* auth not complete send token and wait next packet */
         goto done;
     }
-
-    req->ap_auth_type = apr_pstrdup(req->pool, "Negotiate");
 
     /* Always set the GSS name in an env var */
     maj = gss_display_name(&min, client, &name, NULL);
@@ -342,6 +464,7 @@ static int mag_auth(request_rec *req)
         if (cfg->use_sessions) {
             mag_attempt_session(req, cfg, mc);
         }
+        mc->auth_type = auth_type;
     }
 
     ret = OK;
@@ -360,12 +483,21 @@ done:
         } else {
             apr_table_add(req->err_headers_out,
                           "WWW-Authenticate", "Negotiate");
+            if (cfg->basic_auth != BA_OFF) {
+                apr_table_add(req->err_headers_out,
+                              "WWW-Authenticate",
+                              apr_psprintf(req->pool, "Basic realm=\"%s\"",
+                                           ap_auth_name(req)));
+            }
         }
     }
+    gss_delete_sec_context(&min, &user_ctx, &output);
+    gss_release_cred(&min, &user_cred);
     gss_release_cred(&min, &acquired_cred);
     gss_release_cred(&min, &delegated_cred);
     gss_release_buffer(&min, &output);
     gss_release_name(&min, &client);
+    gss_release_name(&min, &server);
     gss_release_buffer(&min, &name);
     gss_release_buffer(&min, &lname);
     return ret;
@@ -542,6 +674,22 @@ static const char *mag_deleg_ccache_dir(cmd_parms *parms, void *mconfig,
     return NULL;
 }
 
+static const char *mag_use_basic_auth(cmd_parms *parms, void *mconfig,
+                                      const char *value)
+{
+    struct mag_config *cfg = (struct mag_config *)mconfig;
+
+    if (strcasecmp(value, "on") == 0) {
+        cfg->basic_auth = BA_ON;
+    } else if (strcasecmp(value, "forward") == 0) {
+        cfg->basic_auth = BA_FORWARD;
+    } else {
+        cfg->basic_auth = BA_OFF;
+    }
+
+    return NULL;
+}
+
 static const command_rec mag_commands[] = {
     AP_INIT_FLAG("GssapiSSLonly", mag_ssl_only, NULL, OR_AUTHCFG,
                   "Work only if connection is SSL Secured"),
@@ -562,6 +710,10 @@ static const command_rec mag_commands[] = {
                     "Credential Store"),
     AP_INIT_RAW_ARGS("GssapiDelegCcacheDir", mag_deleg_ccache_dir, NULL,
                      OR_AUTHCFG, "Directory to store delegated credentials"),
+#endif
+#ifdef HAVE_GSS_ACQUIRE_CRED_WITH_PASSWORD
+    AP_INIT_TAKE1("GssapiBasicAuth", mag_use_basic_auth, NULL, OR_AUTHCFG,
+                     "Allows use of Basic Auth for authentication"),
 #endif
     { NULL }
 };
