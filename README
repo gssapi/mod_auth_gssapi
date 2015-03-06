@@ -176,9 +176,19 @@ Example:
 
 ### GssapiBasicAuth
 Allows the use of Basic Auth in conjunction with Negotiate.
-Two modes are supported, direct usage of the received username and password
-to try to acquire credentials via GSSAPI, or forwarding to following apache
-module.
+If the browser fails to use Negotiate is will instead fallback to Basic and
+the username and password will be used to try to acquire credentials in the
+module via GSSAPI. If credentials are acquire successfully then they are
+validated agaist the server's keytab.
+
+Enable with: GssapiBasicAuth On
+Default: GssapiBasicAuth Off
 
 Example:
-    GssapiBasicAuth Forward
+<Location /gssapi>
+  AuthType GSSAPI
+  AuthName "Login"
+  GssapiBasicAuth On
+  GssapiCredStore keytab:/etc/httpd/http.keytab
+  Require valid-user
+</Location>

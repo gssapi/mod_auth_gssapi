@@ -255,26 +255,14 @@ static int mag_auth(request_rec *req)
         input.value = apr_pcalloc(req->pool, input.length);
         if (!input.value) goto done;
         input.length = apr_base64_decode(input.value, auth_header_value);
-    } else if (strcasecmp(auth_header_type, "Basic") == 0) {
+    } else if ((strcasecmp(auth_header_type, "Basic") == 0) &&
+               (cfg->use_basic_auth == true)) {
         auth_type = "Basic";
         is_basic = true;
 
         gss_buffer_desc ba_user;
         gss_buffer_desc ba_pwd;
 
-        switch (cfg->basic_auth) {
-        case BA_ON:
-            /* handle directly */
-            break;
-        case BA_FORWARD:
-            /* decline to handle ourselves, let other modules do it */
-            ret = DECLINED;
-            goto done;
-        case BA_OFF:
-            goto done;
-        default:
-            goto done;
-        }
         ba_pwd.value = ap_pbase64decode(req->pool, auth_header);
         if (!ba_pwd.value) goto done;
         ba_user.value = ap_getword_nulls_nc(req->pool,
@@ -483,7 +471,7 @@ done:
         } else {
             apr_table_add(req->err_headers_out,
                           "WWW-Authenticate", "Negotiate");
-            if (cfg->basic_auth != BA_OFF) {
+            if (cfg->use_basic_auth) {
                 apr_table_add(req->err_headers_out,
                               "WWW-Authenticate",
                               apr_psprintf(req->pool, "Basic realm=\"%s\"",
@@ -674,19 +662,11 @@ static const char *mag_deleg_ccache_dir(cmd_parms *parms, void *mconfig,
     return NULL;
 }
 
-static const char *mag_use_basic_auth(cmd_parms *parms, void *mconfig,
-                                      const char *value)
+static const char *mag_use_basic_auth(cmd_parms *parms, void *mconfig, int on)
 {
     struct mag_config *cfg = (struct mag_config *)mconfig;
 
-    if (strcasecmp(value, "on") == 0) {
-        cfg->basic_auth = BA_ON;
-    } else if (strcasecmp(value, "forward") == 0) {
-        cfg->basic_auth = BA_FORWARD;
-    } else {
-        cfg->basic_auth = BA_OFF;
-    }
-
+    cfg->use_basic_auth = on ? true : false;
     return NULL;
 }
 
@@ -712,7 +692,7 @@ static const command_rec mag_commands[] = {
                      OR_AUTHCFG, "Directory to store delegated credentials"),
 #endif
 #ifdef HAVE_GSS_ACQUIRE_CRED_WITH_PASSWORD
-    AP_INIT_TAKE1("GssapiBasicAuth", mag_use_basic_auth, NULL, OR_AUTHCFG,
+    AP_INIT_FLAG("GssapiBasicAuth", mag_use_basic_auth, NULL, OR_AUTHCFG,
                      "Allows use of Basic Auth for authentication"),
 #endif
     { NULL }
