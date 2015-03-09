@@ -152,7 +152,7 @@ principal and the subprocess environment variable KRB5CCNAME will be set
 to point to that file.
 
 Example:
-    GssapiDelegCcacheDir = /var/run/httpd/clientcaches
+    GssapiDelegCcacheDir /var/run/httpd/clientcaches
 
 
 A user foo@EXAMPLE.COM delegating its credentials would cause the server to
@@ -171,7 +171,14 @@ ticket by the application.
 
 Example:
     GssapiUseS4U2Proxy On
-    GssapiDelegCcacheDir = /var/run/httpd/clientcaches
+    GssapiCredStore keytab:/etc/httpd.keytab
+    GssapiCredStore client_keytab:/etc/httpd.keytab
+    GssapiCredStore ccache:FILE:/var/run/httpd/krb5ccache
+    GssapiDelegCcacheDir /var/run/httpd/clientcaches
+
+NOTE: The client keytab is necessary to allow GSSAPI to initate via keytab
+on its own. If not present an external mechanism needs to kinit with the
+keytab and store a ccache in the configured ccache file.
 
 
 ### GssapiBasicAuth
