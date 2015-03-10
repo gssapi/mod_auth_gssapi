@@ -6,15 +6,15 @@
 #include <stdbool.h>
 #include "crypto.h"
 
+#define TAGSIZE 16
+
 struct seal_key {
     const EVP_CIPHER *cipher;
-    const EVP_MD *md;
     unsigned char *ekey;
-    unsigned char *hkey;
 };
 
 apr_status_t SEAL_KEY_CREATE(apr_pool_t *p, struct seal_key **skey,
-                             struct databuf *keys)
+                             struct databuf *key)
 {
     struct seal_key *n;
     int keylen;
@@ -23,7 +23,7 @@ apr_status_t SEAL_KEY_CREATE(apr_pool_t *p, struct seal_key **skey,
     n = apr_pcalloc(p, sizeof(*n));
     if (!n) return ENOMEM;
 
-    n->cipher = EVP_aes_128_cbc();
+    n->cipher = EVP_aes_256_gcm();
     if (!n->cipher) {
         ret = EFAULT;
         goto done;
@@ -31,39 +31,20 @@ apr_status_t SEAL_KEY_CREATE(apr_pool_t *p, struct seal_key **skey,
 
     keylen = n->cipher->key_len;
 
-    n->md = EVP_sha256();
-    if (!n->md) {
-        ret = EFAULT;
-        goto done;
-    }
-
     n->ekey = apr_palloc(p, keylen);
     if (!n->ekey) {
         ret = ENOMEM;
         goto done;
     }
 
-    n->hkey = apr_palloc(p, keylen);
-    if (!n->hkey) {
-        ret = ENOMEM;
-        goto done;
-    }
-
-    if (keys) {
-        if (keys->length != (keylen * 2)) {
+    if (key) {
+        if (key->length < keylen) {
             ret = EINVAL;
             goto done;
         }
-        memcpy(n->ekey, keys->value, keylen);
-        memcpy(n->hkey, keys->value + keylen, keylen);
+        memcpy(n->ekey, key->value, keylen);
     } else {
         ret = apr_generate_random_bytes(n->ekey, keylen);
-        if (ret != 0) {
-            ret = EFAULT;
-            goto done;
-        }
-
-        ret = apr_generate_random_bytes(n->hkey, keylen);
         if (ret != 0) {
             ret = EFAULT;
             goto done;
@@ -74,7 +55,6 @@ apr_status_t SEAL_KEY_CREATE(apr_pool_t *p, struct seal_key **skey,
 done:
     if (ret) {
         free(n->ekey);
-        free(n->hkey);
         free(n);
     } else {
         *skey = n;
@@ -85,71 +65,58 @@ done:
 apr_status_t SEAL_BUFFER(apr_pool_t *p, struct seal_key *skey,
                          struct databuf *plain, struct databuf *cipher)
 {
-    int blksz = skey->cipher->block_size;
     apr_status_t err = EFAULT;
-    EVP_CIPHER_CTX ctx = { 0 };
-    HMAC_CTX hmac_ctx = { 0 };
-    uint8_t rbuf[blksz];
-    unsigned int len;
-    int outlen, totlen;
+    EVP_CIPHER_CTX ctx = {};
+    int minlen;
+    int outlen;
     int ret;
 
     EVP_CIPHER_CTX_init(&ctx);
 
-    /* confounder to avoid exposing random numbers directly to clients
-     * as IVs */
-    ret = apr_generate_random_bytes(rbuf, sizeof(rbuf));
-    if (ret != 0) goto done;
-
-    if (cipher->length == 0) {
-        /* add space for confounder and padding and MAC */
-        cipher->length = (plain->length / blksz + 2) * blksz;
-        cipher->value = apr_palloc(p, cipher->length + skey->md->md_size);
+	/* Add space for padding, IV and tag. */
+    minlen = plain->length / skey->cipher->block_size + 1;
+    minlen *= skey->cipher->block_size;
+    minlen += skey->cipher->iv_len + TAGSIZE;
+    if (cipher->length < minlen) {
+        cipher->length = minlen;
+        cipher->value = apr_palloc(p, cipher->length);
         if (!cipher->value) {
             err = ENOMEM;
             goto done;
         }
     }
 
-    ret = EVP_EncryptInit_ex(&ctx, skey->cipher, NULL, skey->ekey, NULL);
-    if (ret == 0) goto done;
-    totlen = 0;
+    /* Generate IV. */
+    ret = apr_generate_random_bytes(cipher->value, skey->cipher->iv_len);
+    if (ret != 0) goto done;
+    cipher->length = skey->cipher->iv_len;
 
-    outlen = cipher->length;
-    ret = EVP_EncryptUpdate(&ctx, cipher->value, &outlen, rbuf, sizeof(rbuf));
-    if (ret == 0) goto done;
-    totlen += outlen;
+    ret = EVP_EncryptInit_ex(&ctx, skey->cipher, NULL,
+                             skey->ekey, cipher->value);
+    if (ret != 1) goto done;
 
-    outlen = cipher->length - totlen;
-    ret = EVP_EncryptUpdate(&ctx, &cipher->value[totlen], &outlen,
-                            plain->value, plain->length);
-    if (ret == 0) goto done;
-    totlen += outlen;
+    /* Encrypt the data. */
+    outlen = 0;
+    ret = EVP_EncryptUpdate(&ctx, &cipher->value[cipher->length],
+                            &outlen, plain->value, plain->length);
+    if (ret != 1) goto done;
+    cipher->length += outlen;
 
-    outlen = cipher->length - totlen;
-    ret = EVP_EncryptFinal_ex(&ctx, &cipher->value[totlen], &outlen);
-    if (ret == 0) goto done;
-    totlen += outlen;
+    outlen = 0;
+    ret = EVP_EncryptFinal_ex(&ctx, &cipher->value[cipher->length], &outlen);
+    if (ret != 1) goto done;
+    cipher->length += outlen;
 
-    /* now MAC the buffer */
-    HMAC_CTX_init(&hmac_ctx);
+    /* Get the tag */
+    ret = EVP_CIPHER_CTX_ctrl(&ctx, EVP_CTRL_GCM_GET_TAG, TAGSIZE,
+                              &cipher->value[cipher->length]);
+    if (ret != 1) goto done;
+    cipher->length += TAGSIZE;
 
-    ret = HMAC_Init_ex(&hmac_ctx, skey->hkey,
-                       skey->cipher->key_len, skey->md, NULL);
-    if (ret == 0) goto done;
-
-    ret = HMAC_Update(&hmac_ctx, cipher->value, totlen);
-    if (ret == 0) goto done;
-
-    ret = HMAC_Final(&hmac_ctx, &cipher->value[totlen], &len);
-    if (ret == 0) goto done;
-
-    cipher->length = totlen + len;
     err = 0;
 
 done:
     EVP_CIPHER_CTX_cleanup(&ctx);
-    HMAC_CTX_cleanup(&hmac_ctx);
     return err;
 }
 
@@ -157,41 +124,14 @@ apr_status_t UNSEAL_BUFFER(apr_pool_t *p, struct seal_key *skey,
                            struct databuf *cipher, struct databuf *plain)
 {
     apr_status_t err = EFAULT;
-    EVP_CIPHER_CTX ctx = { 0 };
-    HMAC_CTX hmac_ctx = { 0 };
-    unsigned char mac[skey->md->md_size];
-    unsigned int len;
-    int outlen, totlen;
-    volatile bool equal = true;
-    int ret, i;
-
-    /* check MAC first */
-    HMAC_CTX_init(&hmac_ctx);
-
-    ret = HMAC_Init_ex(&hmac_ctx, skey->hkey,
-                       skey->cipher->key_len, skey->md, NULL);
-    if (ret == 0) goto done;
-
-    cipher->length -= skey->md->md_size;
-
-    ret = HMAC_Update(&hmac_ctx, cipher->value, cipher->length);
-    if (ret == 0) goto done;
-
-    ret = HMAC_Final(&hmac_ctx, mac, &len);
-    if (ret == 0) goto done;
-
-    if (len != skey->md->md_size) goto done;
-    for (i = 0; i < skey->md->md_size; i++) {
-        if (cipher->value[cipher->length + i] != mac[i]) equal = false;
-        /* not breaking intentionally,
-         * or we would allow an oracle attack */
-    }
-    if (!equal) goto done;
+    EVP_CIPHER_CTX ctx = {};
+    int outlen;
+    int ret;
 
     EVP_CIPHER_CTX_init(&ctx);
 
-    if (plain->length == 0) {
-        plain->length = cipher->length;
+    if (plain->length < cipher->length - skey->cipher->iv_len - TAGSIZE) {
+        plain->length = cipher->length - skey->cipher->iv_len - TAGSIZE;
         plain->value = apr_palloc(p, plain->length);
         if (!plain->value) {
             err = ENOMEM;
@@ -199,30 +139,30 @@ apr_status_t UNSEAL_BUFFER(apr_pool_t *p, struct seal_key *skey,
         }
     }
 
-    ret = EVP_DecryptInit_ex(&ctx, skey->cipher, NULL, skey->ekey, NULL);
-    if (ret == 0) goto done;
+    ret = EVP_DecryptInit_ex(&ctx, skey->cipher, NULL,
+                             skey->ekey, cipher->value);
+    if (ret != 1) goto done;
+    plain->length = 0;
 
-    totlen = 0;
-    outlen = plain->length;
+    outlen = 0;
     ret = EVP_DecryptUpdate(&ctx, plain->value, &outlen,
-                            cipher->value, cipher->length);
-    if (ret == 0) goto done;
+                            &cipher->value[skey->cipher->iv_len],
+                            cipher->length - skey->cipher->iv_len - TAGSIZE);
+    if (ret != 1) goto done;
+    plain->length += outlen;
 
-    totlen += outlen;
-    outlen = plain->length - totlen;
-    ret = EVP_DecryptFinal_ex(&ctx, plain->value, &outlen);
-    if (ret == 0) goto done;
+    ret = EVP_CIPHER_CTX_ctrl(&ctx, EVP_CTRL_GCM_SET_TAG, TAGSIZE,
+                              &cipher->value[cipher->length - TAGSIZE]);
+    if (ret != 1) goto done;
 
-    totlen += outlen;
-    /* now remove the confounder */
-    totlen -= skey->cipher->block_size;
-    memmove(plain->value, plain->value + skey->cipher->block_size, totlen);
+    outlen = 0;
+    ret = EVP_DecryptFinal_ex(&ctx, &plain->value[plain->length], &outlen);
+    if (ret != 1) goto done;
+    plain->length += outlen;
 
-    plain->length = totlen;
     err = 0;
 
 done:
     EVP_CIPHER_CTX_cleanup(&ctx);
-    HMAC_CTX_cleanup(&hmac_ctx);
     return err;
 }

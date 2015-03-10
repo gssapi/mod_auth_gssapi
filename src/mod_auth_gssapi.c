@@ -586,7 +586,7 @@ static const char *mag_use_s4u2p(cmd_parms *parms, void *mconfig, int on)
 static const char *mag_sess_key(cmd_parms *parms, void *mconfig, const char *w)
 {
     struct mag_config *cfg = (struct mag_config *)mconfig;
-    struct databuf keys;
+    struct databuf key;
     unsigned char *val;
     apr_status_t rc;
     const char *k;
@@ -607,16 +607,16 @@ static const char *mag_sess_key(cmd_parms *parms, void *mconfig, const char *w)
         return NULL;
     }
 
-    keys.length = (int)apr_base64_decode_binary(val, k);
-    keys.value = (unsigned char *)val;
+    key.length = (int)apr_base64_decode_binary(val, k);
+    key.value = (unsigned char *)val;
 
-    if (keys.length != 32) {
+    if (key.length < 32) {
         ap_log_error(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, parms->server,
-                     "Invalid key lenght, expected 32 got %d", keys.length);
+                     "Invalid key length, expected >=32 got %d", key.length);
         return NULL;
     }
 
-    rc = SEAL_KEY_CREATE(cfg->pool, &cfg->mag_skey, &keys);
+    rc = SEAL_KEY_CREATE(cfg->pool, &cfg->mag_skey, &key);
     if (rc != OK) {
         ap_log_error(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, parms->server,
                      "Failed to import sealing key!");
