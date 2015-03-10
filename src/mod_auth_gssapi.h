@@ -5,6 +5,7 @@
 #include <time.h>
 #include <gssapi/gssapi.h>
 #include <gssapi/gssapi_ext.h>
+#include <gssapi/gssapi_krb5.h>
 
 #define APR_WANT_STRFUNC
 #include "apr_want.h"

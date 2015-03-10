@@ -53,7 +53,8 @@ PKG_CHECK_MODULES([OPENSSL], [openssl])
 AC_SUBST([OPENSSL_CFLAGS])
 AC_SUBST([OPENSSL_LIBS])
 
-AC_CHECK_HEADERS([gssapi/gssapi.h],,[AC_MSG_ERROR([Could not find GSSAPI headers])])
+AC_CHECK_HEADERS([gssapi/gssapi.h gssapi/gssapi_ext.h gssapi/gssapi_krb5.h],
+                 ,[AC_MSG_ERROR([Could not find GSSAPI headers])])
 AC_PATH_PROG(KRB5_CONFIG, krb5-config, failed)
 if test x$KRB5_CONFIG = xfailed; then
     AC_MSG_ERROR([Could not find GSSAPI development libraries])
@@ -66,6 +67,7 @@ AC_CHECK_LIB([gssapi_krb5], [gss_accept_sec_context], [],
 AC_CHECK_FUNCS(gss_acquire_cred_from)
 AC_CHECK_FUNCS(gss_store_cred_into)
 AC_CHECK_FUNCS(gss_acquire_cred_with_password)
+AC_CHECK_FUNCS(gss_krb5_ccache_name)
 
 AC_SUBST([GSSAPI_CFLAGS])
 AC_SUBST([GSSAPI_LIBS])

@@ -183,6 +183,10 @@ static int mag_auth(request_rec *req)
     bool is_basic = false;
     gss_ctx_id_t user_ctx = GSS_C_NO_CONTEXT;
     gss_name_t server = GSS_C_NO_NAME;
+#ifdef HAVE_GSS_KRB5_CCACHE_NAME
+    const char *user_ccache = NULL;
+    char *orig_ccache = NULL;
+#endif
 
     type = ap_auth_type(req);
     if ((type == NULL) || (strcasecmp(type, "GSSAPI") != 0)) {
@@ -284,6 +288,29 @@ static int mag_auth(request_rec *req)
                                     maj, min));
             goto done;
         }
+#ifdef HAVE_GSS_KRB5_CCACHE_NAME
+        /* Set a per-thread ccache in case we are using kerberos,
+         * it is not elegant but avoids interference between threads */
+        long long unsigned int rndname;
+        apr_status_t rs;
+        rs = apr_generate_random_bytes((unsigned char *)(&rndname),
+                                       sizeof(long long unsigned int));
+        if (rs != APR_SUCCESS) {
+            ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, req,
+                          "Failed to generate random ccache name");
+            goto done;
+        }
+        user_ccache = apr_psprintf(req->pool, "MEMORY:user_%qu", rndname);
+        maj = gss_krb5_ccache_name(&min, user_ccache,
+                                   (const char **)&orig_ccache);
+        if (GSS_ERROR(maj)) {
+            ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, req,
+                          "In Basic Auth, %s",
+                          mag_error(req, "gss_krb5_ccache_name() "
+                                    "failed", maj, min));
+            goto done;
+        }
+#endif
         maj = gss_acquire_cred_with_password(&min, client, &ba_pwd,
                                              GSS_C_INDEFINITE,
                                              GSS_C_NO_OID_SET,
@@ -479,6 +506,19 @@ done:
             }
         }
     }
+#ifdef HAVE_GSS_KRB5_CCACHE_NAME
+    if (user_ccache != NULL) {
+        maj = gss_krb5_ccache_name(&min, orig_ccache, NULL);
+        if (maj != GSS_S_COMPLETE) {
+            ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, req,
+                          "Failed to restore per-thread ccache, %s",
+                          mag_error(req, "gss_krb5_ccache_name() "
+                                    "failed", maj, min));
+        }
+    }
+    free(orig_ccache);
+    orig_ccache = NULL;
+#endif
     gss_delete_sec_context(&min, &user_ctx, &output);
     gss_release_cred(&min, &user_cred);
     gss_release_cred(&min, &acquired_cred);
