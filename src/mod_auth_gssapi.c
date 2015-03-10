@@ -185,7 +185,7 @@ static int mag_auth(request_rec *req)
     gss_name_t server = GSS_C_NO_NAME;
 #ifdef HAVE_GSS_KRB5_CCACHE_NAME
     const char *user_ccache = NULL;
-    char *orig_ccache = NULL;
+    const char *orig_ccache = NULL;
 #endif
 
     type = ap_auth_type(req);
@@ -301,8 +301,7 @@ static int mag_auth(request_rec *req)
             goto done;
         }
         user_ccache = apr_psprintf(req->pool, "MEMORY:user_%qu", rndname);
-        maj = gss_krb5_ccache_name(&min, user_ccache,
-                                   (const char **)&orig_ccache);
+        maj = gss_krb5_ccache_name(&min, user_ccache, &orig_ccache);
         if (GSS_ERROR(maj)) {
             ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, req,
                           "In Basic Auth, %s",
@@ -516,8 +515,6 @@ done:
                                     "failed", maj, min));
         }
     }
-    free(orig_ccache);
-    orig_ccache = NULL;
 #endif
     gss_delete_sec_context(&min, &user_ctx, &output);
     gss_release_cred(&min, &user_cred);
