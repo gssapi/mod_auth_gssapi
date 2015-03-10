@@ -58,13 +58,13 @@ apr_status_t SEAL_KEY_CREATE(apr_pool_t *p, struct seal_key **skey,
         memcpy(n->hkey, keys->value + keylen, keylen);
     } else {
         ret = apr_generate_random_bytes(n->ekey, keylen);
-        if (ret == 0) {
+        if (ret != 0) {
             ret = EFAULT;
             goto done;
         }
 
         ret = apr_generate_random_bytes(n->hkey, keylen);
-        if (ret == 0) {
+        if (ret != 0) {
             ret = EFAULT;
             goto done;
         }
@@ -99,7 +99,7 @@ apr_status_t SEAL_BUFFER(apr_pool_t *p, struct seal_key *skey,
     /* confounder to avoid exposing random numbers directly to clients
      * as IVs */
     ret = apr_generate_random_bytes(rbuf, sizeof(rbuf));
-    if (ret == 0) goto done;
+    if (ret != 0) goto done;
 
     if (cipher->length == 0) {
         /* add space for confounder and padding and MAC */
