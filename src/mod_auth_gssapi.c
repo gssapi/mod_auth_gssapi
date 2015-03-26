@@ -119,6 +119,48 @@ static bool mag_conn_is_https(conn_rec *c)
     return false;
 }
 
+static char *escape(apr_pool_t *pool, const char *name,
+                    char find, const char *replace)
+{
+    char *escaped = NULL;
+    char *namecopy;
+    char *n;
+    char *p;
+
+    namecopy = apr_pstrdup(pool, name);
+    if (!namecopy) goto done;
+
+    p = strchr(namecopy, find);
+    if (!p) return namecopy;
+
+    /* first segment */
+    n = namecopy;
+    while (p) {
+        /* terminate previous segment */
+        *p = '\0';
+        if (escaped) {
+            escaped = apr_pstrcat(pool, escaped, n, replace, NULL);
+        } else {
+            escaped = apr_pstrcat(pool, n, replace, NULL);
+        }
+        if (!escaped) goto done;
+        /* move to next segment */
+        n = p + 1;
+        p = strchr(n, find);
+    }
+    /* append last segment if any */
+    if (*n) {
+        escaped = apr_pstrcat(pool, escaped, n, NULL);
+    }
+
+done:
+    if (!escaped) {
+        ap_log_error(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, NULL,
+                     "OOM escaping name");
+    }
+    return escaped;
+}
+
 static void mag_store_deleg_creds(request_rec *req,
                                   char *dir, char *clientname,
                                   gss_cred_id_t delegated_cred,
@@ -128,8 +170,18 @@ static void mag_store_deleg_creds(request_rec *req,
     gss_key_value_set_desc store;
     char *value;
     uint32_t maj, min;
+    char *escaped;
 
-    value = apr_psprintf(req->pool, "FILE:%s/%s", dir, clientname);
+    /* We need to escape away '/', we can't have path separators in
+     * a ccache file name */
+    /* first double escape the esacping char (~) if any */
+    escaped = escape(req->pool, clientname, '~', "~~");
+    if (!escaped) return;
+    /* then escape away the separator (/) if any */
+    escaped = escape(req->pool, escaped, '/', "~");
+    if (!escaped) return;
+
+    value = apr_psprintf(req->pool, "FILE:%s/%s", dir, escaped);
     if (!value) {
         ap_log_error(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, NULL,
                      "OOM storing delegated credentials");
