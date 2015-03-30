@@ -245,12 +245,37 @@ static int mag_auth(request_rec *req)
         return DECLINED;
     }
 
-    /* ignore auth for subrequests */
-    if (!ap_is_initial_req(req)) {
-        return OK;
-    }
-
     cfg = ap_get_module_config(req->per_dir_config, &auth_gssapi_module);
+
+    /* implicit auth for subrequests if main auth already happened */
+    if (!ap_is_initial_req(req)) {
+        type = ap_auth_type(req->main);
+        if ((type != NULL) && (strcasecmp(type, "GSSAPI") == 0)) {
+            /* warn if the subrequest location and the main request
+             * location have different configs */
+            if (cfg != ap_get_module_config(req->main->per_dir_config,
+                                            &auth_gssapi_module)) {
+                ap_log_rerror(APLOG_MARK, APLOG_WARNING||APLOG_NOERRNO, 0,
+                              req, "Subrequest authentication bypass on "
+                                   "location with different configuration!");
+            }
+            if (req->main->user) {
+                req->user = apr_pstrdup(req->pool, req->main->user);
+                return OK;
+            } else {
+                ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, req,
+                              "The main request is tasked to establish the "
+                              "security context, can't proceed!");
+                return HTTP_UNAUTHORIZED;
+            }
+        } else {
+            ap_log_rerror(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, req,
+                          "Subrequest GSSAPI auth with no auth on the main "
+                          "request. This operation may fail if other "
+                          "subrequests already established a context or the "
+                          "mechanism requires multiple roundtrips.");
+        }
+    }
 
     if (cfg->ssl_only) {
         if (!mag_conn_is_https(req->connection)) {
