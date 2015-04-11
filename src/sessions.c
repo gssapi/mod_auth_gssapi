@@ -153,6 +153,10 @@ void mag_check_session(request_rec *req,
         return;
     }
 
+    /* booleans */
+    if (gsessdata->established != 0) mc->established = true;
+    if (gsessdata->delegated != 0) mc->delegated = true;
+
     /* get time */
     expiration = gsessdata->expiration;
     if (expiration < time(NULL)) {
@@ -211,6 +215,8 @@ void mag_attempt_session(request_rec *req,
         }
     }
 
+    gsessdata.established = mc->established?1:0;
+    gsessdata.delegated = mc->delegated?1:0;
     gsessdata.expiration = mc->expiration;
     if (OCTET_STRING_fromString(&gsessdata.username, mc->user_name) != 0)
         goto done;

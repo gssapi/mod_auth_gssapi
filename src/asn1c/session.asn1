@@ -3,8 +3,10 @@ GssapiSessionModule DEFINITIONS ::= BEGIN
     Uint32 ::= INTEGER (0..4294967295)
 
     GSSSessionData ::= SEQUENCE {
-        expiration  [0] Uint32,
-        username    [1] OCTET STRING,
-        gssname     [2] OCTET STRING
+        established [0] BOOLEAN,
+        delegated   [1] BOOLEAN,
+        expiration  [2] Uint32,
+        username    [3] OCTET STRING,
+        gssname     [4] OCTET STRING
     }
 END

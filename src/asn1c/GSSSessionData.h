@@ -12,6 +12,7 @@
 #include <asn_application.h>
 
 /* Including external dependencies */
+#include <BOOLEAN.h>
 #include "Uint32.h"
 #include <OCTET_STRING.h>
 #include <constr_SEQUENCE.h>
@@ -22,6 +23,8 @@ extern "C" {
 
 /* GSSSessionData */
 typedef struct GSSSessionData {
+	BOOLEAN_t	 established;
+	BOOLEAN_t	 delegated;
 	Uint32_t	 expiration;
 	OCTET_STRING_t	 username;
 	OCTET_STRING_t	 gssname;

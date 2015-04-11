@@ -6,6 +6,7 @@ ASN1C_SOURCES =			\
 	ber_tlv_length.c	\
 	ber_tlv_tag.c		\
 	BIT_STRING.c		\
+	BOOLEAN.c		\
 	constraints.c		\
 	constr_SEQUENCE.c	\
 	constr_TYPE.c		\
@@ -30,6 +31,7 @@ ASN1C_SOURCES =			\
 	ber_tlv_length.h	\
 	ber_tlv_tag.h		\
 	BIT_STRING.h		\
+	BOOLEAN.h		\
 	constraints.h		\
 	constr_SEQUENCE.h	\
 	constr_TYPE.h		\

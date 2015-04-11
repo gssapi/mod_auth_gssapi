@@ -67,6 +67,7 @@ struct mag_conn {
     const char *gss_name;
     time_t expiration;
     int auth_type;
+    bool delegated;
 };
 
 #define discard_const(ptr) ((void *)((uintptr_t)(ptr)))

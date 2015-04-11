@@ -191,6 +191,38 @@ static char *escape(apr_pool_t *pool, const char *name,
     return escaped;
 }
 
+static char *mag_gss_name_to_ccache_name(request_rec *req,
+                                         char *dir, const char *gss_name)
+{
+    char *escaped;
+
+    /* We need to escape away '/', we can't have path separators in
+     * a ccache file name */
+    /* first double escape the esacping char (~) if any */
+    escaped = escape(req->pool, gss_name, '~', "~~");
+    /* then escape away the separator (/) if any */
+    escaped = escape(req->pool, escaped, '/', "~");
+
+    return apr_psprintf(req->pool, "%s/%s", dir, escaped);
+}
+
+static void mag_set_KRB5CCANME(request_rec *req, char *ccname)
+{
+    apr_status_t status;
+    apr_finfo_t finfo;
+    char *value;
+
+    status = apr_stat(&finfo, ccname, APR_FINFO_MIN, req->pool);
+    if (status != APR_SUCCESS && status != APR_INCOMPLETE) {
+        /* set the file cache anyway, but warn */
+        ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, req,
+                      "KRB5CCNAME file (%s) lookup failed!", ccname);
+    }
+
+    value = apr_psprintf(req->pool, "FILE:%s", ccname);
+    apr_table_set(req->subprocess_env, "KRB5CCNAME", value);
+}
+
 static void mag_store_deleg_creds(request_rec *req,
                                   char *dir, char *clientname,
                                   gss_cred_id_t delegated_cred,
@@ -198,25 +230,14 @@ static void mag_store_deleg_creds(request_rec *req,
 {
     gss_key_value_element_desc element;
     gss_key_value_set_desc store;
-    char *value;
+    char *ccname;
     uint32_t maj, min;
-    char *escaped;
-
-    /* We need to escape away '/', we can't have path separators in
-     * a ccache file name */
-    /* first double escape the esacping char (~) if any */
-    escaped = escape(req->pool, clientname, '~', "~~");
-    if (!escaped) return;
-    /* then escape away the separator (/) if any */
-    escaped = escape(req->pool, escaped, '/', "~");
-    if (!escaped) return;
-
-    value = apr_psprintf(req->pool, "FILE:%s/%s", dir, escaped);
-
     element.key = "ccache";
-    element.value = value;
     store.elements = &element;
     store.count = 1;
+
+    ccname = mag_gss_name_to_ccache_name(req, dir, clientname);
+    element.value = apr_psprintf(req->pool, "FILE:%s", ccname);
 
     maj = gss_store_cred_into(&min, delegated_cred, GSS_C_INITIATE,
                               GSS_C_NULL_OID, 1, 1, &store, NULL, NULL);
@@ -226,7 +247,7 @@ static void mag_store_deleg_creds(request_rec *req,
                                 maj, min));
     }
 
-    *ccachefile = value;
+    *ccachefile = ccname;
 }
 #endif
 
@@ -392,6 +413,15 @@ static int mag_auth(request_rec *req)
             req->ap_auth_type = apr_pstrdup(req->pool,
                                             auth_types[mc->auth_type]);
             req->user = apr_pstrdup(req->pool, mc->user_name);
+            if (cfg->deleg_ccache_dir && mc->delegated) {
+                char *ccname;
+                ccname = mag_gss_name_to_ccache_name(req,
+                                                     cfg->deleg_ccache_dir,
+                                                     mc->gss_name);
+                if (ccname) {
+                    mag_set_KRB5CCANME(req, ccname);
+                }
+            }
             ret = OK;
             goto done;
         }
@@ -644,7 +674,11 @@ static int mag_auth(request_rec *req)
                               delegated_cred, &ccachefile);
 
         if (ccachefile) {
-            apr_table_set(req->subprocess_env, "KRB5CCNAME", ccachefile);
+            mag_set_KRB5CCANME(req, ccachefile);
+        }
+
+        if (mc) {
+            mc->delegated = true;
         }
     }
 #endif
