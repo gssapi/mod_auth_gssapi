@@ -239,6 +239,7 @@ static int mag_auth(request_rec *req)
     const char *user_ccache = NULL;
     const char *orig_ccache = NULL;
 #endif
+    uint32_t init_flags = 0;
 
     type = ap_auth_type(req);
     if ((type == NULL) || (strcasecmp(type, "GSSAPI") != 0)) {
@@ -445,9 +446,15 @@ static int mag_auth(request_rec *req)
                                           "failed", maj, min));
             goto done;
         }
+
+        if (cfg->deleg_ccache_dir) {
+            /* delegate ourselves credentials so we store them as requested */
+            init_flags |= GSS_C_DELEG_FLAG;
+        }
+
         /* output and input are inverted here, this is intentional */
         maj = gss_init_sec_context(&min, user_cred, &user_ctx, server,
-                                   GSS_C_NO_OID, 0, 300,
+                                   GSS_C_NO_OID, init_flags, 300,
                                    GSS_C_NO_CHANNEL_BINDINGS, &output,
                                    NULL, &input, NULL, NULL);
         if (GSS_ERROR(maj)) {
@@ -473,7 +480,7 @@ static int mag_auth(request_rec *req)
             gss_release_buffer(&min, &input);
             /* output and input are inverted here, this is intentional */
             maj = gss_init_sec_context(&min, user_cred, &user_ctx, server,
-                                       GSS_C_NO_OID, 0, 300,
+                                       GSS_C_NO_OID, init_flags, 300,
                                        GSS_C_NO_CHANNEL_BINDINGS, &output,
                                        NULL, &input, NULL, NULL);
             if (GSS_ERROR(maj)) {
