@@ -568,25 +568,23 @@ static int mag_auth(request_rec *req)
     ret = OK;
 
 done:
-    if (ret == HTTP_UNAUTHORIZED) {
-        if (output.length != 0) {
-            replen = apr_base64_encode_len(output.length) + 1;
-            reply = apr_pcalloc(req->pool, 10 + replen);
-            if (reply) {
-                memcpy(reply, "Negotiate ", 10);
-                apr_base64_encode(&reply[10], output.value, output.length);
-                apr_table_add(req->err_headers_out,
-                              "WWW-Authenticate", reply);
-            }
-        } else {
+    if ((!is_basic) && (output.length != 0)) {
+        replen = apr_base64_encode_len(output.length) + 1;
+        reply = apr_pcalloc(req->pool, 10 + replen);
+        if (reply) {
+            memcpy(reply, "Negotiate ", 10);
+            apr_base64_encode(&reply[10], output.value, output.length);
             apr_table_add(req->err_headers_out,
-                          "WWW-Authenticate", "Negotiate");
-            if (cfg->use_basic_auth) {
-                apr_table_add(req->err_headers_out,
-                              "WWW-Authenticate",
-                              apr_psprintf(req->pool, "Basic realm=\"%s\"",
-                                           ap_auth_name(req)));
-            }
+                          "WWW-Authenticate", reply);
+        }
+    } else if (ret == HTTP_UNAUTHORIZED) {
+        apr_table_add(req->err_headers_out,
+                      "WWW-Authenticate", "Negotiate");
+        if (cfg->use_basic_auth) {
+            apr_table_add(req->err_headers_out,
+                          "WWW-Authenticate",
+                          apr_psprintf(req->pool, "Basic realm=\"%s\"",
+                                       ap_auth_name(req)));
         }
     }
 #ifdef HAVE_GSS_KRB5_CCACHE_NAME
