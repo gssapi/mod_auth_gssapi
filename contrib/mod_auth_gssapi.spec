@@ -1,5 +1,5 @@
 Name:           mod_auth_gssapi
-Version:        1.1.1
+Version:        1.2.0
 Release:        1%{?dist}
 Summary:        A GSSAPI Authentication module for Apache
 
@@ -43,6 +43,9 @@ install -m 644 10-auth_gssapi.conf %{buildroot}%{_httpd_modconfdir}
 %{_httpd_moddir}/mod_auth_gssapi.so
 
 %changelog
+* Thu Apr 21 2015 Simo Sorce <simo@redhat.com> 1.2.0-1
+- New minor release 1.2.0
+
 * Thu Apr  2 2015 Simo Sorce <simo@redhat.com> 1.1.1-1
 - New minor release 1.1.1
 
