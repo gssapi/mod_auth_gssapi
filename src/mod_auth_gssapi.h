@@ -39,6 +39,7 @@ struct mag_config {
     bool ssl_only;
     bool map_to_local;
     bool gss_conn_ctx;
+    bool send_persist;
     bool use_sessions;
     bool use_s4u2proxy;
     char *deleg_ccache_dir;

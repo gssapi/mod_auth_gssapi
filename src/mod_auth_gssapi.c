@@ -565,6 +565,10 @@ static int mag_auth(request_rec *req)
         mc->auth_type = auth_type;
     }
 
+    if (cfg->send_persist)
+        apr_table_set(req->headers_out, "Persistent-Auth",
+            cfg->gss_conn_ctx ? "true" : "false");
+
     ret = OK;
 
 done:
@@ -640,6 +644,13 @@ static const char *mag_conn_ctx(cmd_parms *parms, void *mconfig, int on)
 {
     struct mag_config *cfg = (struct mag_config *)mconfig;
     cfg->gss_conn_ctx = on ? true : false;
+    return NULL;
+}
+
+static const char *mag_send_persist(cmd_parms *parms, void *mconfig, int on)
+{
+    struct mag_config *cfg = (struct mag_config *)mconfig;
+    cfg->send_persist = on ? true : false;
     return NULL;
 }
 
@@ -796,6 +807,8 @@ static const command_rec mag_commands[] = {
                   "Translate principals to local names"),
     AP_INIT_FLAG("GssapiConnectionBound", mag_conn_ctx, NULL, OR_AUTHCFG,
                   "Authentication is bound to the TCP connection"),
+    AP_INIT_FLAG("GssapiSignalPersistentAuth", mag_send_persist, NULL, OR_AUTHCFG,
+                  "Send Persitent-Auth header according to connection bound"),
     AP_INIT_FLAG("GssapiUseSessions", mag_use_sess, NULL, OR_AUTHCFG,
                   "Authentication uses mod_sessions to hold status"),
     AP_INIT_RAW_ARGS("GssapiSessionKey", mag_sess_key, NULL, OR_AUTHCFG,
