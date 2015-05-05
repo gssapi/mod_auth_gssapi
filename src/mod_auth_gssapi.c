@@ -240,6 +240,7 @@ static int mag_auth(request_rec *req)
     const char *orig_ccache = NULL;
 #endif
     uint32_t init_flags = 0;
+    time_t expiration;
 
     type = ap_auth_type(req);
     if ((type == NULL) || (strcasecmp(type, "GSSAPI") != 0)) {
@@ -312,6 +313,9 @@ static int mag_auth(request_rec *req)
             ap_log_rerror(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, req,
                           "Already established context found!");
             apr_table_set(req->subprocess_env, "GSS_NAME", mc->gss_name);
+            apr_table_set(req->subprocess_env, "GSS_SESSION_EXPIRATION",
+                          apr_psprintf(req->pool,
+                                       "%ld", (long)mc->expiration));
             req->ap_auth_type = apr_pstrdup(req->pool, mc->auth_type);
             req->user = apr_pstrdup(req->pool, mc->user_name);
             ret = OK;
@@ -525,6 +529,9 @@ static int mag_auth(request_rec *req)
     }
     clientname = apr_pstrndup(req->pool, name.value, name.length);
     apr_table_set(req->subprocess_env, "GSS_NAME", clientname);
+    expiration = time(NULL) + vtime;
+    apr_table_set(req->subprocess_env, "GSS_SESSION_EXPIRATION",
+                  apr_psprintf(req->pool, "%ld", (long)expiration));
 
 #ifdef HAVE_GSS_STORE_CRED_INTO
     if (cfg->deleg_ccache_dir && delegated_cred != GSS_C_NO_CREDENTIAL) {
@@ -558,7 +565,7 @@ static int mag_auth(request_rec *req)
         if (vtime == GSS_C_INDEFINITE || vtime < MIN_SESS_EXP_TIME) {
             vtime = MIN_SESS_EXP_TIME;
         }
-        mc->expiration = time(NULL) + vtime;
+        mc->expiration = expiration;
         if (cfg->use_sessions) {
             mag_attempt_session(req, cfg, mc);
         }
