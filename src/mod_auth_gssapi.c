@@ -30,8 +30,6 @@ module AP_MODULE_DECLARE_DATA auth_gssapi_module;
 
 APLOG_USE_MODULE(auth_gssapi);
 
-APR_DECLARE_OPTIONAL_FN(int, ssl_is_https, (conn_rec *));
-
 static char *mag_status(request_rec *req, int type, uint32_t err)
 {
     uint32_t maj_ret, min_ret;

@@ -18,6 +18,7 @@
 #include <http_log.h>
 #include <http_request.h>
 #include <mod_session.h>
+#include <mod_ssl.h>
 
 /* apache's httpd.h drags in empty PACKAGE_* variables.
  * undefine them to avoid annoying compile warnings as they
