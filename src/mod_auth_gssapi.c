@@ -671,11 +671,6 @@ static const char *mag_sess_key(cmd_parms *parms, void *mconfig, const char *w)
 
     l = apr_base64_decode_len(k);
     val = apr_palloc(parms->temp_pool, l);
-    if (!val) {
-        ap_log_error(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, parms->server,
-                     "Failed to get memory to decode key");
-        return NULL;
-    }
 
     keys.length = (int)apr_base64_decode_binary(val, k);
     keys.value = (unsigned char *)val;
