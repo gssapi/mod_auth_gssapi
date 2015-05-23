@@ -89,7 +89,7 @@ authentication (like NTLMSSP) it is necessary to bind to the authentication to
 the connection in order to keep the state between round-trips. With this option
 enable incomplete context are store in the connection and retrieved on the next
 request for continuation.
-When using this option you may also ant to set the Persistent-Auth header for
+When using this option you may also want to set the Persistent-Auth header for
 those clients that make use of it.
 
 Example:
