@@ -357,16 +357,9 @@ static int mag_auth(request_rec *req)
 #ifdef HAVE_GSS_KRB5_CCACHE_NAME
         /* Set a per-thread ccache in case we are using kerberos,
          * it is not elegant but avoids interference between threads */
-        long long unsigned int rndname;
-        apr_status_t rs;
-        rs = apr_generate_random_bytes((unsigned char *)(&rndname),
-                                       sizeof(long long unsigned int));
-        if (rs != APR_SUCCESS) {
-            ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
-                          "Failed to generate random ccache name");
-            goto done;
-        }
-        user_ccache = apr_psprintf(req->pool, "MEMORY:user_%qu", rndname);
+        apr_uint32_t rndname = ap_random_pick(0, APR_UINT32_MAX);
+
+        user_ccache = apr_psprintf(req->pool, "MEMORY:user_%u", rndname);
         maj = gss_krb5_ccache_name(&min, user_ccache, &orig_ccache);
         if (GSS_ERROR(maj)) {
             ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
