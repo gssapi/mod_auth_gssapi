@@ -687,7 +687,7 @@ static const char *mag_sess_key(cmd_parms *parms, void *mconfig, const char *w)
 
     if (keys.length != 32) {
         ap_log_error(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, parms->server,
-                     "Invalid key lenght, expected 32 got %d", keys.length);
+                     "Invalid key length, expected 32 got %d", keys.length);
         return NULL;
     }
 
