@@ -89,7 +89,6 @@ static int mag_pre_connection(conn_rec *c, void *csd)
     struct mag_conn *mc;
 
     mc = apr_pcalloc(c->pool, sizeof(struct mag_conn));
-    if (!mc) return DECLINED;
 
     mc->parent = c->pool;
     ap_set_module_config(c->conn_config, &auth_gssapi_module, (void*)mc);
@@ -608,7 +607,6 @@ static void *mag_create_dir_config(apr_pool_t *p, char *dir)
     struct mag_config *cfg;
 
     cfg = (struct mag_config *)apr_pcalloc(p, sizeof(struct mag_config));
-    if (!cfg) return NULL;
     cfg->pool = p;
 
     return cfg;
