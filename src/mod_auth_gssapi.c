@@ -89,7 +89,6 @@ static int mag_pre_connection(conn_rec *c, void *csd)
     struct mag_conn *mc;
 
     mc = apr_pcalloc(c->pool, sizeof(struct mag_conn));
-    if (!mc) return DECLINED;
 
     mc->parent = c->pool;
     ap_set_module_config(c->conn_config, &auth_gssapi_module, (void*)mc);
@@ -126,7 +125,6 @@ static char *escape(apr_pool_t *pool, const char *name,
     char *p;
 
     namecopy = apr_pstrdup(pool, name);
-    if (!namecopy) goto done;
 
     p = strchr(namecopy, find);
     if (!p) return namecopy;
@@ -141,7 +139,6 @@ static char *escape(apr_pool_t *pool, const char *name,
         } else {
             escaped = apr_pstrcat(pool, n, replace, NULL);
         }
-        if (!escaped) goto done;
         /* move to next segment */
         n = p + 1;
         p = strchr(n, find);
@@ -151,11 +148,6 @@ static char *escape(apr_pool_t *pool, const char *name,
         escaped = apr_pstrcat(pool, escaped, n, NULL);
     }
 
-done:
-    if (!escaped) {
-        ap_log_error(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, NULL,
-                     "OOM escaping name");
-    }
     return escaped;
 }
 
@@ -180,11 +172,6 @@ static void mag_store_deleg_creds(request_rec *req,
     if (!escaped) return;
 
     value = apr_psprintf(req->pool, "FILE:%s/%s", dir, escaped);
-    if (!value) {
-        ap_log_error(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, NULL,
-                     "OOM storing delegated credentials");
-        return;
-    }
 
     element.key = "ccache";
     element.value = value;
@@ -625,7 +612,6 @@ static void *mag_create_dir_config(apr_pool_t *p, char *dir)
     struct mag_config *cfg;
 
     cfg = (struct mag_config *)apr_pcalloc(p, sizeof(struct mag_config));
-    if (!cfg) return NULL;
     cfg->pool = p;
 
     return cfg;
@@ -673,10 +659,6 @@ static const char *mag_use_s4u2p(cmd_parms *parms, void *mconfig, int on)
 
     if (cfg->deleg_ccache_dir == NULL) {
         cfg->deleg_ccache_dir = apr_pstrdup(parms->pool, "/tmp");
-        if (!cfg->deleg_ccache_dir) {
-            ap_log_error(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0,
-                         parms->server, "%s", "OOM setting deleg_ccache_dir.");
-        }
     }
     return NULL;
 }
@@ -699,11 +681,6 @@ static const char *mag_sess_key(cmd_parms *parms, void *mconfig, const char *w)
 
     l = apr_base64_decode_len(k);
     val = apr_palloc(parms->temp_pool, l);
-    if (!val) {
-        ap_log_error(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, parms->server,
-                     "Failed to get memory to decode key");
-        return NULL;
-    }
 
     keys.length = (int)apr_base64_decode_binary(val, k);
     keys.value = (unsigned char *)val;
@@ -744,26 +721,12 @@ static const char *mag_cred_store(cmd_parms *parms, void *mconfig,
 
     key = apr_pstrndup(parms->pool, w, (p-w));
     value = apr_pstrdup(parms->pool, p + 1);
-    if (!key || !value) {
-        ap_log_error(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, parms->server,
-                     "%s", "OOM handling GssapiCredStore option");
-        return NULL;
-    }
 
     if (!cfg->cred_store) {
         cfg->cred_store = apr_pcalloc(parms->pool,
                                       sizeof(gss_key_value_set_desc));
-        if (!cfg->cred_store) {
-            ap_log_error(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, parms->server,
-                         "%s", "OOM handling GssapiCredStore option");
-            return NULL;
-        }
         size = sizeof(gss_key_value_element_desc) * MAX_CRED_OPTIONS;
         cfg->cred_store->elements = apr_palloc(parms->pool, size);
-        if (!cfg->cred_store->elements) {
-            ap_log_error(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, parms->server,
-                         "%s", "OOM handling GssapiCredStore option");
-        }
     }
 
     elements = cfg->cred_store->elements;
@@ -789,10 +752,6 @@ static const char *mag_deleg_ccache_dir(cmd_parms *parms, void *mconfig,
     struct mag_config *cfg = (struct mag_config *)mconfig;
 
     cfg->deleg_ccache_dir = apr_pstrdup(parms->pool, value);
-    if (!cfg->deleg_ccache_dir) {
-        ap_log_error(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, parms->server,
-                     "%s", "OOM handling GssapiDelegCcacheDir option");
-    }
 
     return NULL;
 }
