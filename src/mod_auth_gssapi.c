@@ -28,6 +28,10 @@ const gss_OID_desc gss_mech_ntlmssp = {
     GSS_NTLMSSP_OID_LENGTH, GSS_NTLMSSP_OID_STRING
 };
 
+const gss_OID_set_desc gss_mech_set_ntlmssp = {
+    1, discard_const(&gss_mech_ntlmssp)
+};
+
 #define MOD_AUTH_GSSAPI_VERSION PACKAGE_NAME "/" PACKAGE_VERSION
 
 module AP_MODULE_DECLARE_DATA auth_gssapi_module;
@@ -124,7 +128,8 @@ static bool mag_acquire_creds(request_rec *req,
                               struct mag_config *cfg,
                               gss_OID_set desired_mechs,
                               gss_cred_usage_t cred_usage,
-                              gss_cred_id_t *creds)
+                              gss_cred_id_t *creds,
+                              gss_OID_set *actual_mechs)
 {
     uint32_t maj, min;
 #ifdef HAVE_CRED_STORE
@@ -132,10 +137,11 @@ static bool mag_acquire_creds(request_rec *req,
 
     maj = gss_acquire_cred_from(&min, GSS_C_NO_NAME, GSS_C_INDEFINITE,
                                 desired_mechs, cred_usage, store, creds,
-                                NULL, NULL);
+                                actual_mechs, NULL);
 #else
     maj = gss_acquire_cred(&min, GSS_C_NO_NAME, GSS_C_INDEFINITE,
-                           desired_mechs, cred_usage, creds, NULL, NULL);
+                           desired_mechs, cred_usage, creds,
+                           actual_mechs, NULL);
 #endif
 
     if (GSS_ERROR(maj)) {
@@ -224,20 +230,58 @@ static void mag_store_deleg_creds(request_rec *req,
 }
 #endif
 
+static bool parse_auth_header(apr_pool_t *pool, const char **auth_header,
+                              gss_buffer_t value)
+{
+    char *auth_header_value;
+
+    auth_header_value = ap_getword_white(pool, auth_header);
+    if (!auth_header_value) return false;
+    value->length = apr_base64_decode_len(auth_header_value) + 1;
+    value->value = apr_pcalloc(pool, value->length);
+    if (!value->value) return false;
+    value->length = apr_base64_decode(value->value, auth_header_value);
+
+    return true;
+}
+
+static bool is_mech_allowed(struct mag_config *cfg, gss_const_OID mech)
+{
+    if (cfg->allowed_mechs == GSS_C_NO_OID_SET) return true;
+
+    for (int i = 0; i < cfg->allowed_mechs->count; i++) {
+        if (gss_oid_equal(&cfg->allowed_mechs->elements[i], mech)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+#define AUTH_TYPE_NEGOTIATE 0
+#define AUTH_TYPE_BASIC 1
+#define AUTH_TYPE_RAW_NTLM 2
+const char *auth_types[] = {
+    "Negotiate",
+    "Basic",
+    "NTLM",
+    NULL
+};
+
 static int mag_auth(request_rec *req)
 {
     const char *type;
-    const char *auth_type;
+    int auth_type = -1;
     struct mag_config *cfg;
     const char *auth_header;
     char *auth_header_type;
-    char *auth_header_value;
     int ret = HTTP_UNAUTHORIZED;
     gss_ctx_id_t ctx = GSS_C_NO_CONTEXT;
     gss_ctx_id_t *pctx;
     gss_buffer_desc input = GSS_C_EMPTY_BUFFER;
     gss_buffer_desc output = GSS_C_EMPTY_BUFFER;
     gss_buffer_desc name = GSS_C_EMPTY_BUFFER;
+    gss_buffer_desc ba_user;
+    gss_buffer_desc ba_pwd;
     gss_name_t client = GSS_C_NO_NAME;
     gss_cred_id_t user_cred = GSS_C_NO_CREDENTIAL;
     gss_cred_id_t acquired_cred = GSS_C_NO_CREDENTIAL;
@@ -251,9 +295,9 @@ static int mag_auth(request_rec *req)
     size_t replen;
     char *clientname;
     gss_OID mech_type = GSS_C_NO_OID;
+    gss_OID_set desired_mechs = GSS_C_NO_OID_SET;
     gss_buffer_desc lname = GSS_C_EMPTY_BUFFER;
     struct mag_conn *mc = NULL;
-    bool is_basic = false;
     gss_ctx_id_t user_ctx = GSS_C_NO_CONTEXT;
     gss_name_t server = GSS_C_NO_NAME;
 #ifdef HAVE_GSS_KRB5_CCACHE_NAME
@@ -262,6 +306,7 @@ static int mag_auth(request_rec *req)
 #endif
     uint32_t init_flags = 0;
     time_t expiration;
+    int i;
 
     type = ap_auth_type(req);
     if ((type == NULL) || (strcasecmp(type, "GSSAPI") != 0)) {
@@ -269,6 +314,13 @@ static int mag_auth(request_rec *req)
     }
 
     cfg = ap_get_module_config(req->per_dir_config, &auth_gssapi_module);
+
+    if (!cfg->allowed_mechs) {
+        /* Try to fetch the default set if not explicitly configured */
+        (void)mag_acquire_creds(req, cfg, GSS_C_NO_OID_SET, GSS_C_ACCEPT,
+                                &server_cred, &cfg->allowed_mechs);
+        (void)gss_release_cred(&min, &server_cred);
+    }
 
     /* implicit auth for subrequests if main auth already happened */
     if (!ap_is_initial_req(req)) {
@@ -337,7 +389,8 @@ static int mag_auth(request_rec *req)
             apr_table_set(req->subprocess_env, "GSS_SESSION_EXPIRATION",
                           apr_psprintf(req->pool,
                                        "%ld", (long)mc->expiration));
-            req->ap_auth_type = apr_pstrdup(req->pool, mc->auth_type);
+            req->ap_auth_type = apr_pstrdup(req->pool,
+                                            auth_types[mc->auth_type]);
             req->user = apr_pstrdup(req->pool, mc->user_name);
             ret = OK;
             goto done;
@@ -353,22 +406,23 @@ static int mag_auth(request_rec *req)
     auth_header_type = ap_getword_white(req->pool, &auth_header);
     if (!auth_header_type) goto done;
 
-    if (strcasecmp(auth_header_type, "Negotiate") == 0) {
-        auth_type = "Negotiate";
+    for (i = 0; auth_types[i] != NULL; i++) {
+        if (strcasecmp(auth_header_type, auth_types[i]) == 0) {
+            auth_type = i;
+            break;
+        }
+    }
 
-        auth_header_value = ap_getword_white(req->pool, &auth_header);
-        if (!auth_header_value) goto done;
-        input.length = apr_base64_decode_len(auth_header_value) + 1;
-        input.value = apr_pcalloc(req->pool, input.length);
-        if (!input.value) goto done;
-        input.length = apr_base64_decode(input.value, auth_header_value);
-    } else if ((strcasecmp(auth_header_type, "Basic") == 0) &&
-               (cfg->use_basic_auth == true)) {
-        auth_type = "Basic";
-        is_basic = true;
-
-        gss_buffer_desc ba_user;
-        gss_buffer_desc ba_pwd;
+    switch (auth_type) {
+    case AUTH_TYPE_NEGOTIATE:
+        if (!parse_auth_header(req->pool, &auth_header, &input)) {
+            goto done;
+        }
+        break;
+    case AUTH_TYPE_BASIC:
+        if (!cfg->use_basic_auth) {
+            goto done;
+        }
 
         ba_pwd.value = ap_pbase64decode(req->pool, auth_header);
         if (!ba_pwd.value) goto done;
@@ -426,30 +480,46 @@ static int mag_auth(request_rec *req)
             goto done;
         }
         gss_release_name(&min, &client);
-    } else {
+        break;
+
+    case AUTH_TYPE_RAW_NTLM:
+        if (!is_mech_allowed(cfg, &gss_mech_ntlmssp)) {
+            ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, req,
+                          "NTLM Authentication is not allowed!");
+            goto done;
+        }
+
+        if (!parse_auth_header(req->pool, &auth_header, &input)) {
+            goto done;
+        }
+
+        desired_mechs = discard_const(&gss_mech_set_ntlmssp);
+        break;
+
+    default:
         goto done;
     }
 
-    req->ap_auth_type = apr_pstrdup(req->pool, auth_type);
+    req->ap_auth_type = apr_pstrdup(req->pool, auth_types[auth_type]);
 
 #ifdef HAVE_CRED_STORE
     if (cfg->use_s4u2proxy) {
         cred_usage = GSS_C_BOTH;
     }
 #endif
-    if (!mag_acquire_creds(req, cfg, GSS_C_NO_OID_SET,
-                           cred_usage, &acquired_cred)) {
+    if (!mag_acquire_creds(req, cfg, desired_mechs,
+                           cred_usage, &acquired_cred, NULL)) {
         goto done;
     }
 
-    if (is_basic) {
+    if (auth_type == AUTH_TYPE_BASIC) {
         if (cred_usage == GSS_C_BOTH) {
             /* If GSS_C_BOTH is used then inquire_cred will return the client
              * name instead of the SPN of the server credentials. Therefore we
              * need to acquire a different set of credential setting
              * GSS_C_ACCEPT explicitly */
-            if (!mag_acquire_creds(req, cfg, GSS_C_NO_OID_SET,
-                                   GSS_C_ACCEPT, &server_cred)) {
+            if (!mag_acquire_creds(req, cfg, cfg->allowed_mechs,
+                                   GSS_C_ACCEPT, &server_cred, NULL)) {
                 goto done;
             }
         } else {
@@ -487,7 +557,8 @@ static int mag_auth(request_rec *req)
         }
     }
 
-    if (!is_basic && cfg->allowed_mechs != GSS_C_NO_OID_SET) {
+    if (auth_type == AUTH_TYPE_NEGOTIATE &&
+        cfg->allowed_mechs != GSS_C_NO_OID_SET) {
         maj = gss_set_neg_mechs(&min, acquired_cred, cfg->allowed_mechs);
         if (GSS_ERROR(maj)) {
             ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req, "%s",
@@ -507,7 +578,7 @@ static int mag_auth(request_rec *req)
                                 maj, min));
         goto done;
     }
-    if (is_basic) {
+    if (auth_type == AUTH_TYPE_BASIC) {
         while (maj == GSS_S_CONTINUE_NEEDED) {
             gss_release_buffer(&min, &input);
             /* output and input are inverted here, this is intentional */
@@ -607,18 +678,22 @@ static int mag_auth(request_rec *req)
     ret = OK;
 
 done:
-    if ((!is_basic) && (output.length != 0)) {
+    if ((auth_type != AUTH_TYPE_BASIC) && (output.length != 0)) {
+        int prefixlen = strlen(auth_types[auth_type]) + 1;
         replen = apr_base64_encode_len(output.length) + 1;
-        reply = apr_pcalloc(req->pool, 10 + replen);
+        reply = apr_pcalloc(req->pool, prefixlen + replen);
         if (reply) {
-            memcpy(reply, "Negotiate ", 10);
-            apr_base64_encode(&reply[10], output.value, output.length);
+            memcpy(reply, auth_types[auth_type], prefixlen - 1);
+            reply[prefixlen - 1] = ' ';
+            apr_base64_encode(&reply[prefixlen], output.value, output.length);
             apr_table_add(req->err_headers_out,
                           "WWW-Authenticate", reply);
         }
     } else if (ret == HTTP_UNAUTHORIZED) {
-        apr_table_add(req->err_headers_out,
-                      "WWW-Authenticate", "Negotiate");
+        apr_table_add(req->err_headers_out, "WWW-Authenticate", "Negotiate");
+        if (is_mech_allowed(cfg, &gss_mech_ntlmssp)) {
+            apr_table_add(req->err_headers_out, "WWW-Authenticate", "NTLM");
+        }
         if (cfg->use_basic_auth) {
             apr_table_add(req->err_headers_out,
                           "WWW-Authenticate",

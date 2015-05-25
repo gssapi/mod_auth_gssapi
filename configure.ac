@@ -7,7 +7,7 @@ AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_HEADERS([src/config.h])
 
 # Checks for programs.
-AC_PROG_CC
+AC_PROG_CC_STDC
 
 AC_PROG_LIBTOOL
 AC_SUBST(INCLTDL)
