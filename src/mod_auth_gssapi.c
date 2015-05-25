@@ -206,6 +206,7 @@ static int mag_auth(request_rec *req)
     gss_name_t client = GSS_C_NO_NAME;
     gss_cred_id_t user_cred = GSS_C_NO_CREDENTIAL;
     gss_cred_id_t acquired_cred = GSS_C_NO_CREDENTIAL;
+    gss_cred_id_t server_cred = GSS_C_NO_CREDENTIAL;
     gss_cred_id_t delegated_cred = GSS_C_NO_CREDENTIAL;
     gss_cred_usage_t cred_usage = GSS_C_ACCEPT;
     uint32_t flags;
@@ -427,13 +428,42 @@ static int mag_auth(request_rec *req)
                 goto done;
             }
         }
-        maj = gss_inquire_cred(&min, acquired_cred, &server,
+        if (cred_usage == GSS_C_BOTH) {
+            /* If GSS_C_BOTH is used then inquire_cred will return the client
+             * name instead of the SPN of the server credentials. Therefore we
+             * need to acquire a different set of credential setting
+             * GSS_C_ACCEPT explicitly */
+            if (cfg->cred_store) {
+                maj = gss_acquire_cred_from(&min, GSS_C_NO_NAME,
+                                            GSS_C_INDEFINITE, GSS_C_NO_OID_SET,
+                                            GSS_C_ACCEPT, cfg->cred_store,
+                                            &server_cred, NULL, NULL);
+            } else {
+                /* Try to acquire default creds */
+                maj = gss_acquire_cred(&min, GSS_C_NO_NAME, GSS_C_INDEFINITE,
+                                       GSS_C_NO_OID_SET, GSS_C_ACCEPT,
+                                       &server_cred, NULL, NULL);
+            }
+            if (GSS_ERROR(maj)) {
+                ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req, "%s",
+                              mag_error(req, "gss_acquire_cred[_from]() "
+                                        "failed to get server creds",
+                                        maj, min));
+                goto done;
+            }
+        } else {
+            server_cred = acquired_cred;
+        }
+        maj = gss_inquire_cred(&min, server_cred, &server,
                                NULL, NULL, NULL);
         if (GSS_ERROR(maj)) {
             ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
                           "%s", mag_error(req, "gss_inquired_cred_() "
                                           "failed", maj, min));
             goto done;
+        }
+        if (server_cred != acquired_cred) {
+            gss_release_cred(&min, &server_cred);
         }
 
         if (cfg->deleg_ccache_dir) {
