@@ -204,3 +204,15 @@ Example:
   GssapiCredStore keytab:/etc/httpd/http.keytab
   Require valid-user
 </Location>
+
+
+### GssapiAllowedMech
+
+List of allowed mechanisms. This is useful to restrict the mechanism that
+can be used when credentials for multiple mechanisms are available.
+By default no mechanism is set, this means all locally available mechanisms
+are allowed.  The recognized mechanism names are: krb5, iakerb, ntlmssp
+
+Example:
+    GssapiAllowedMech krb5
+    GssapiAllowedMech ntlmssp

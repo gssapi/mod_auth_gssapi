@@ -6,6 +6,7 @@
 #include <gssapi/gssapi.h>
 #include <gssapi/gssapi_ext.h>
 #include <gssapi/gssapi_krb5.h>
+#include <gssapi/gssapi_ntlmssp.h>
 
 #define APR_WANT_STRFUNC
 #include "apr_want.h"
@@ -55,6 +56,7 @@ struct mag_config {
 #endif
     struct seal_key *mag_skey;
     bool use_basic_auth;
+    gss_OID_set_desc *allowed_mechs;
 };
 
 struct mag_conn {

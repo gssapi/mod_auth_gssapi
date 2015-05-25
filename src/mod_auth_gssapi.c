@@ -24,6 +24,10 @@
 
 #include "mod_auth_gssapi.h"
 
+const gss_OID_desc gss_mech_ntlmssp = {
+    GSS_NTLMSSP_OID_LENGTH, GSS_NTLMSSP_OID_STRING
+};
+
 #define MOD_AUTH_GSSAPI_VERSION PACKAGE_NAME "/" PACKAGE_VERSION
 
 module AP_MODULE_DECLARE_DATA auth_gssapi_module;
@@ -411,7 +415,7 @@ static int mag_auth(request_rec *req)
 #endif
         maj = gss_acquire_cred_with_password(&min, client, &ba_pwd,
                                              GSS_C_INDEFINITE,
-                                             GSS_C_NO_OID_SET,
+                                             cfg->allowed_mechs,
                                              GSS_C_INITIATE,
                                              &user_cred, NULL, NULL);
         if (GSS_ERROR(maj)) {
@@ -479,6 +483,16 @@ static int mag_auth(request_rec *req)
             ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
                           "%s", mag_error(req, "gss_init_sec_context() "
                                           "failed", maj, min));
+            goto done;
+        }
+    }
+
+    if (!is_basic && cfg->allowed_mechs != GSS_C_NO_OID_SET) {
+        maj = gss_set_neg_mechs(&min, acquired_cred, cfg->allowed_mechs);
+        if (GSS_ERROR(maj)) {
+            ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req, "%s",
+                          mag_error(req, "gss_set_neg_mechs() failed",
+                                    maj, min));
             goto done;
         }
     }
@@ -798,6 +812,46 @@ static const char *mag_use_basic_auth(cmd_parms *parms, void *mconfig, int on)
     return NULL;
 }
 
+#define MAX_ALLOWED_MECHS 10
+
+static const char *mag_allow_mech(cmd_parms *parms, void *mconfig,
+                                  const char *w)
+{
+    struct mag_config *cfg = (struct mag_config *)mconfig;
+    gss_const_OID oid;
+    size_t size;
+
+    if (!cfg->allowed_mechs) {
+        cfg->allowed_mechs = apr_pcalloc(parms->pool,
+                                         sizeof(gss_OID_set_desc));
+        size = sizeof(gss_OID) * MAX_ALLOWED_MECHS;
+        cfg->allowed_mechs->elements = apr_palloc(parms->pool, size);
+    }
+
+    if (strcmp(w, "krb5") == 0) {
+        oid = gss_mech_krb5;
+    } else if (strcmp(w, "iakerb") == 0) {
+        oid = gss_mech_iakerb;
+    } else if (strcmp(w, "ntlmssp") == 0) {
+        oid = &gss_mech_ntlmssp;
+    } else {
+        ap_log_error(APLOG_MARK, APLOG_ERR, 0, parms->server,
+                     "Unrecognized GSSAPI Mechanism: %s", w);
+        return NULL;
+    }
+
+    if (cfg->allowed_mechs->count >= MAX_ALLOWED_MECHS) {
+        ap_log_error(APLOG_MARK, APLOG_ERR, 0, parms->server,
+                     "Too many GssapiAllowedMech options (MAX: %d)",
+                     MAX_ALLOWED_MECHS);
+        return NULL;
+    }
+    cfg->allowed_mechs->elements[cfg->allowed_mechs->count] = *oid;
+    cfg->allowed_mechs->count++;
+
+    return NULL;
+}
+
 static const command_rec mag_commands[] = {
     AP_INIT_FLAG("GssapiSSLonly", mag_ssl_only, NULL, OR_AUTHCFG,
                   "Work only if connection is SSL Secured"),
@@ -823,6 +877,8 @@ static const command_rec mag_commands[] = {
     AP_INIT_FLAG("GssapiBasicAuth", mag_use_basic_auth, NULL, OR_AUTHCFG,
                      "Allows use of Basic Auth for authentication"),
 #endif
+    AP_INIT_ITERATE("GssapiAllowedMech", mag_allow_mech, NULL, OR_AUTHCFG,
+                    "Allowed Mechanisms"),
     { NULL }
 };
 
