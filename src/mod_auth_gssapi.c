@@ -423,7 +423,7 @@ static int mag_auth(request_rec *req)
                                    &acquired_cred, NULL, NULL);
             if (GSS_ERROR(maj)) {
                 ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
-                              "%s", mag_error(req, "gss_acquire_cred_from()"
+                              "%s", mag_error(req, "gss_acquire_cred()"
                                               " failed", maj, min));
                 goto done;
             }
@@ -433,12 +433,16 @@ static int mag_auth(request_rec *req)
              * name instead of the SPN of the server credentials. Therefore we
              * need to acquire a different set of credential setting
              * GSS_C_ACCEPT explicitly */
+#ifdef HAVE_GSS_ACQUIRE_CRED_FROM
             if (cfg->cred_store) {
                 maj = gss_acquire_cred_from(&min, GSS_C_NO_NAME,
                                             GSS_C_INDEFINITE, GSS_C_NO_OID_SET,
                                             GSS_C_ACCEPT, cfg->cred_store,
                                             &server_cred, NULL, NULL);
             } else {
+#else
+            {
+#endif
                 /* Try to acquire default creds */
                 maj = gss_acquire_cred(&min, GSS_C_NO_NAME, GSS_C_INDEFINITE,
                                        GSS_C_NO_OID_SET, GSS_C_ACCEPT,
