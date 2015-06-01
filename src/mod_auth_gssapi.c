@@ -116,6 +116,35 @@ static bool mag_conn_is_https(conn_rec *c)
     return false;
 }
 
+static bool mag_acquire_creds(request_rec *req,
+                              struct mag_config *cfg,
+                              gss_OID_set desired_mechs,
+                              gss_cred_usage_t cred_usage,
+                              gss_cred_id_t *creds)
+{
+    uint32_t maj, min;
+#ifdef HAVE_CRED_STORE
+    gss_const_key_value_set_t store = cfg->cred_store;
+
+    maj = gss_acquire_cred_from(&min, GSS_C_NO_NAME, GSS_C_INDEFINITE,
+                                desired_mechs, cred_usage, store, creds,
+                                NULL, NULL);
+#else
+    maj = gss_acquire_cred(&min, GSS_C_NO_NAME, GSS_C_INDEFINITE,
+                           desired_mechs, cred_usage, creds, NULL, NULL);
+#endif
+
+    if (GSS_ERROR(maj)) {
+        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req, "%s",
+                      mag_error(req, "gss_acquire_cred[_from]() "
+                                "failed to get server creds",
+                                maj, min));
+        return false;
+    }
+
+    return true;
+}
+
 #ifdef HAVE_CRED_STORE
 static char *escape(apr_pool_t *pool, const char *name,
                     char find, const char *replace)
@@ -403,58 +432,20 @@ static int mag_auth(request_rec *req)
     if (cfg->use_s4u2proxy) {
         cred_usage = GSS_C_BOTH;
     }
-    if (cfg->cred_store) {
-        maj = gss_acquire_cred_from(&min, GSS_C_NO_NAME, GSS_C_INDEFINITE,
-                                    GSS_C_NO_OID_SET, cred_usage,
-                                    cfg->cred_store, &acquired_cred,
-                                    NULL, NULL);
-        if (GSS_ERROR(maj)) {
-            ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req, "%s",
-                          mag_error(req, "gss_acquire_cred_from() failed",
-                                    maj, min));
-            goto done;
-        }
-    }
 #endif
+    if (!mag_acquire_creds(req, cfg, GSS_C_NO_OID_SET,
+                           cred_usage, &acquired_cred)) {
+        goto done;
+    }
 
     if (is_basic) {
-        if (!acquired_cred) {
-            /* Try to acquire default creds */
-            maj = gss_acquire_cred(&min, GSS_C_NO_NAME, GSS_C_INDEFINITE,
-                                   GSS_C_NO_OID_SET, cred_usage,
-                                   &acquired_cred, NULL, NULL);
-            if (GSS_ERROR(maj)) {
-                ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
-                              "%s", mag_error(req, "gss_acquire_cred()"
-                                              " failed", maj, min));
-                goto done;
-            }
-        }
         if (cred_usage == GSS_C_BOTH) {
             /* If GSS_C_BOTH is used then inquire_cred will return the client
              * name instead of the SPN of the server credentials. Therefore we
              * need to acquire a different set of credential setting
              * GSS_C_ACCEPT explicitly */
-#ifdef HAVE_CRED_STORE
-            if (cfg->cred_store) {
-                maj = gss_acquire_cred_from(&min, GSS_C_NO_NAME,
-                                            GSS_C_INDEFINITE, GSS_C_NO_OID_SET,
-                                            GSS_C_ACCEPT, cfg->cred_store,
-                                            &server_cred, NULL, NULL);
-            } else {
-#else
-            {
-#endif
-                /* Try to acquire default creds */
-                maj = gss_acquire_cred(&min, GSS_C_NO_NAME, GSS_C_INDEFINITE,
-                                       GSS_C_NO_OID_SET, GSS_C_ACCEPT,
-                                       &server_cred, NULL, NULL);
-            }
-            if (GSS_ERROR(maj)) {
-                ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req, "%s",
-                              mag_error(req, "gss_acquire_cred[_from]() "
-                                        "failed to get server creds",
-                                        maj, min));
+            if (!mag_acquire_creds(req, cfg, GSS_C_NO_OID_SET,
+                                   GSS_C_ACCEPT, &server_cred)) {
                 goto done;
             }
         } else {
