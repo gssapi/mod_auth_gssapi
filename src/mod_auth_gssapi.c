@@ -116,6 +116,7 @@ static bool mag_conn_is_https(conn_rec *c)
     return false;
 }
 
+#ifdef HAVE_CRED_STORE
 static char *escape(apr_pool_t *pool, const char *name,
                     char find, const char *replace)
 {
@@ -188,6 +189,7 @@ static void mag_store_deleg_creds(request_rec *req,
 
     *ccachefile = value;
 }
+#endif
 
 static int mag_auth(request_rec *req)
 {
@@ -397,7 +399,7 @@ static int mag_auth(request_rec *req)
 
     req->ap_auth_type = apr_pstrdup(req->pool, auth_type);
 
-#ifdef HAVE_GSS_ACQUIRE_CRED_FROM
+#ifdef HAVE_CRED_STORE
     if (cfg->use_s4u2proxy) {
         cred_usage = GSS_C_BOTH;
     }
@@ -433,7 +435,7 @@ static int mag_auth(request_rec *req)
              * name instead of the SPN of the server credentials. Therefore we
              * need to acquire a different set of credential setting
              * GSS_C_ACCEPT explicitly */
-#ifdef HAVE_GSS_ACQUIRE_CRED_FROM
+#ifdef HAVE_CRED_STORE
             if (cfg->cred_store) {
                 maj = gss_acquire_cred_from(&min, GSS_C_NO_NAME,
                                             GSS_C_INDEFINITE, GSS_C_NO_OID_SET,
@@ -470,10 +472,12 @@ static int mag_auth(request_rec *req)
             gss_release_cred(&min, &server_cred);
         }
 
+#ifdef HAVE_CRED_STORE
         if (cfg->deleg_ccache_dir) {
             /* delegate ourselves credentials so we store them as requested */
             init_flags |= GSS_C_DELEG_FLAG;
         }
+#endif
 
         /* output and input are inverted here, this is intentional */
         maj = gss_init_sec_context(&min, user_cred, &user_ctx, server,
@@ -552,7 +556,7 @@ static int mag_auth(request_rec *req)
     apr_table_set(req->subprocess_env, "GSS_SESSION_EXPIRATION",
                   apr_psprintf(req->pool, "%ld", (long)expiration));
 
-#ifdef HAVE_GSS_STORE_CRED_INTO
+#ifdef HAVE_CRED_STORE
     if (cfg->deleg_ccache_dir && delegated_cred != GSS_C_NO_CREDENTIAL) {
         char *ccachefile = NULL;
 
@@ -686,6 +690,7 @@ static const char *mag_use_sess(cmd_parms *parms, void *mconfig, int on)
     return NULL;
 }
 
+#ifdef HAVE_CRED_STORE
 static const char *mag_use_s4u2p(cmd_parms *parms, void *mconfig, int on)
 {
     struct mag_config *cfg = (struct mag_config *)mconfig;
@@ -696,6 +701,7 @@ static const char *mag_use_s4u2p(cmd_parms *parms, void *mconfig, int on)
     }
     return NULL;
 }
+#endif
 
 static const char *mag_sess_key(cmd_parms *parms, void *mconfig, const char *w)
 {
@@ -732,6 +738,8 @@ static const char *mag_sess_key(cmd_parms *parms, void *mconfig, const char *w)
     }
     return NULL;
 }
+
+#ifdef HAVE_CRED_STORE
 
 #define MAX_CRED_OPTIONS 10
 
@@ -789,6 +797,7 @@ static const char *mag_deleg_ccache_dir(cmd_parms *parms, void *mconfig,
 
     return NULL;
 }
+#endif
 
 static const char *mag_use_basic_auth(cmd_parms *parms, void *mconfig, int on)
 {
@@ -811,11 +820,9 @@ static const command_rec mag_commands[] = {
                   "Authentication uses mod_sessions to hold status"),
     AP_INIT_RAW_ARGS("GssapiSessionKey", mag_sess_key, NULL, OR_AUTHCFG,
                      "Key Used to seal session data."),
-#ifdef HAVE_GSS_ACQUIRE_CRED_FROM
+#ifdef HAVE_CRED_STORE
     AP_INIT_FLAG("GssapiUseS4U2Proxy", mag_use_s4u2p, NULL, OR_AUTHCFG,
                   "Initializes credentials for s4u2proxy usage"),
-#endif
-#ifdef HAVE_GSS_STORE_CRED_INTO
     AP_INIT_ITERATE("GssapiCredStore", mag_cred_store, NULL, OR_AUTHCFG,
                     "Credential Store"),
     AP_INIT_RAW_ARGS("GssapiDelegCcacheDir", mag_deleg_ccache_dir, NULL,

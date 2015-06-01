@@ -35,6 +35,12 @@
 
 #define MIN_SESS_EXP_TIME 300 /* 5 minutes validity minimum */
 
+#ifdef HAVE_GSS_ACQUIRE_CRED_FROM
+#  ifdef HAVE_GSS_STORE_CRED_INTO
+#define HAVE_CRED_STORE 1
+#  endif
+#endif
+
 struct mag_config {
     apr_pool_t *pool;
     bool ssl_only;
@@ -42,9 +48,11 @@ struct mag_config {
     bool gss_conn_ctx;
     bool send_persist;
     bool use_sessions;
+#ifdef HAVE_CRED_STORE
     bool use_s4u2proxy;
     char *deleg_ccache_dir;
     gss_key_value_set_desc *cred_store;
+#endif
     struct seal_key *mag_skey;
     bool use_basic_auth;
 };
