@@ -323,7 +323,7 @@ static int mag_auth(request_rec *req)
     }
 
     /* implicit auth for subrequests if main auth already happened */
-    if (!ap_is_initial_req(req)) {
+    if (!ap_is_initial_req(req) && req->main != NULL) {
         type = ap_auth_type(req->main);
         if ((type != NULL) && (strcasecmp(type, "GSSAPI") == 0)) {
             /* warn if the subrequest location and the main request
