@@ -579,6 +579,10 @@ static int mag_auth(request_rec *req)
         goto done;
     }
     if (auth_type == AUTH_TYPE_BASIC) {
+        if (mc) {
+            apr_pool_cleanup_run(mc->parent, mc, mag_conn_destroy);
+            mc = NULL;
+        }
         while (maj == GSS_S_CONTINUE_NEEDED) {
             gss_release_buffer(&min, &input);
             /* output and input are inverted here, this is intentional */
