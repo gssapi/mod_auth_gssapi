@@ -657,7 +657,6 @@ static int mag_auth(request_rec *req)
                           "Mechanism needs continuation but neither "
                           "GssapiConnectionBound nor "
                           "GssapiUseSessions are available");
-            gss_delete_sec_context(&min, pctx, GSS_C_NO_BUFFER);
             gss_release_buffer(&min, &output);
             output.length = 0;
         }
@@ -766,7 +765,9 @@ done:
         }
     }
 #endif
-    gss_delete_sec_context(&min, &user_ctx, &output);
+    if (ctx != GSS_C_NO_CONTEXT)
+        gss_delete_sec_context(&min, &ctx, GSS_C_NO_BUFFER);
+    gss_delete_sec_context(&min, &user_ctx, GSS_C_NO_BUFFER);
     gss_release_cred(&min, &user_cred);
     gss_release_cred(&min, &acquired_cred);
     gss_release_cred(&min, &delegated_cred);
