@@ -82,6 +82,6 @@ AC_SUBST([MAG_LIBS])
 AC_SUBST([LIBTOOL])
 AC_SUBST([MAG_LIBDIR])
 
-AC_CONFIG_FILES([Makefile src/Makefile])
+AC_CONFIG_FILES([Makefile src/Makefile src/asn1c/Makefile])
 
 AC_OUTPUT

@@ -1,3 +1,5 @@
+AM_CPPFLAGS = -Iasn1c
+
 magdir = $(MAG_LIBDIR)
 mag_LTLIBRARIES = \
     mod_auth_gssapi.la
@@ -9,6 +11,8 @@ mod_auth_gssapi_la_SOURCES = \
     mod_auth_gssapi.c crypto.c sessions.c
 mod_auth_gssapi_la_CFLAGS = \
     $(MAG_CFLAGS)
+mod_auth_gssapi_la_LIBADD = \
+    asn1c/libmagasn1.la
 mod_auth_gssapi_la_LDFLAGS = \
     $(MAG_LIBS) \
     -avoid-version \

@@ -1,6 +1,7 @@
 /* Copyright (C) 2014 mod_auth_gssapi authors - See COPYING for (C) terms */
 
 #include "mod_auth_gssapi.h"
+#include "asn1c/GSSSessionData.h"
 
 APLOG_USE_MODULE(auth_gssapi);
 
@@ -41,6 +42,48 @@ static apr_status_t mag_session_set(request_rec *req, session_rec *sess,
     return DECLINED;
 }
 
+static bool encode_GSSSessionData(apr_pool_t *mempool,
+                                  GSSSessionData_t *gsessdata,
+                                  unsigned char **buf, int *len)
+{
+    asn_enc_rval_t rval;
+    unsigned char *buffer = NULL;
+    size_t buflen;
+    bool ret = false;
+
+    /* dry run to compute the size */
+    rval = der_encode(&asn_DEF_GSSSessionData, gsessdata, NULL, NULL);
+    if (rval.encoded == -1) goto done;
+
+    buflen = rval.encoded;
+    buffer = apr_pcalloc(mempool, buflen);
+
+    /* now for real */
+    rval = der_encode_to_buffer(&asn_DEF_GSSSessionData,
+                                gsessdata, buffer, buflen);
+    if (rval.encoded == -1) goto done;
+
+    *buf = buffer;
+    *len = buflen;
+    ret = true;
+
+done:
+    return ret;
+}
+
+static GSSSessionData_t *decode_GSSSessionData(void *buf, size_t len)
+{
+    GSSSessionData_t *gsessdata = NULL;
+    asn_dec_rval_t rval;
+
+    rval = ber_decode(NULL, &asn_DEF_GSSSessionData,
+                      (void **)&gsessdata, buf, len);
+    if (rval.code == RC_OK) {
+        return gsessdata;
+    }
+    return NULL;
+}
+
 #define MAG_BEARER_KEY "MagBearerToken"
 
 void mag_check_session(request_rec *req,
@@ -53,7 +96,7 @@ void mag_check_session(request_rec *req,
     int declen;
     struct databuf ctxbuf = { 0 };
     struct databuf cipherbuf = { 0 };
-    char *next, *last;
+    GSSSessionData_t *gsessdata;
     time_t expiration;
 
     rc = mag_session_load(req, &sess);
@@ -103,38 +146,49 @@ void mag_check_session(request_rec *req,
         return;
     }
 
-    /* get time */
-    next = apr_strtok((char *)ctxbuf.value, ":", &last);
-    expiration = (time_t)apr_atoi64(next);
-    if (expiration < time(NULL)) {
-        /* credentials fully expired, return nothing */
+    gsessdata = decode_GSSSessionData(ctxbuf.value, ctxbuf.length);
+    if (!gsessdata) {
+        ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, req,
+                      "Failed to unpack session data!");
         return;
     }
 
-    /* user name is next */
-    next = apr_strtok(NULL, ":", &last);
-    mc->user_name = apr_pstrdup(mc->parent, next);
-    if (!mc->user_name) return;
+    /* get time */
+    expiration = gsessdata->expiration;
+    if (expiration < time(NULL)) {
+        /* credentials fully expired, return nothing */
+        goto done;
+    }
 
-    /* gssapi name (often a principal) is last.
-     * (because it may contain the separator as a valid char we
-     * just read last as is, without further tokenizing */
-    mc->gss_name = apr_pstrdup(mc->parent, last);
-    if (!mc->gss_name) return;
+    /* user name */
+    mc->user_name = apr_pstrndup(mc->parent,
+                                 (char *)gsessdata->username.buf,
+                                 gsessdata->username.size);
+    if (!mc->user_name) goto done;
+
+    /* gssapi name */
+    mc->gss_name = apr_pstrndup(mc->parent,
+                                (char *)gsessdata->gssname.buf,
+                                gsessdata->gssname.size);
+    if (!mc->gss_name) goto done;
 
     /* OK we have a valid token */
     mc->established = true;
+
+done:
+    ASN_STRUCT_FREE(asn_DEF_GSSSessionData, gsessdata);
 }
 
 void mag_attempt_session(request_rec *req,
                          struct mag_config *cfg, struct mag_conn *mc)
 {
     session_rec *sess = NULL;
-    char *sessval = NULL;
     struct databuf plainbuf = { 0 };
     struct databuf cipherbuf = { 0 };
     struct databuf ctxbuf = { 0 };
+    GSSSessionData_t gsessdata = { 0 };
     apr_status_t rc;
+    bool ret;
 
     /* we save the session only if the authentication is established */
 
@@ -157,23 +211,29 @@ void mag_attempt_session(request_rec *req,
         }
     }
 
-    sessval = apr_psprintf(req->pool, "%ld:%s:%s",
-                           (long)mc->expiration, mc->user_name, mc->gss_name);
-    if (!sessval) return;
-
-    plainbuf.length = strlen(sessval) + 1;
-    plainbuf.value = (unsigned char *)sessval;
+    gsessdata.expiration = mc->expiration;
+    if (OCTET_STRING_fromString(&gsessdata.username, mc->user_name) != 0)
+        goto done;
+    if (OCTET_STRING_fromString(&gsessdata.gssname, mc->gss_name) != 0)
+        goto done;
+    ret = encode_GSSSessionData(req->pool, &gsessdata,
+                                &plainbuf.value, &plainbuf.length);
+    if (ret == false) {
+        ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, req,
+                      "Failed to pack session data!");
+        goto done;
+    }
 
     rc = SEAL_BUFFER(req->pool, cfg->mag_skey, &plainbuf, &cipherbuf);
     if (rc != OK) {
         ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, req,
                       "Failed to seal session data!");
-        return;
+        goto done;
     }
 
     ctxbuf.length = apr_base64_encode_len(cipherbuf.length);
     ctxbuf.value = apr_pcalloc(req->pool, ctxbuf.length);
-    if (!ctxbuf.value) return;
+    if (!ctxbuf.value) goto done;
 
     ctxbuf.length = apr_base64_encode((char *)ctxbuf.value,
                                       (char *)cipherbuf.value,
@@ -183,7 +243,9 @@ void mag_attempt_session(request_rec *req,
     if (rc != OK) {
         ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, req,
                       "Failed to set session data!");
-        return;
     }
+
+done:
+    ASN_STRUCT_FREE_CONTENTS_ONLY(asn_DEF_GSSSessionData, &gsessdata);
 }
 
