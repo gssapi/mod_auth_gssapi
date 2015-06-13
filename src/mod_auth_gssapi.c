@@ -288,6 +288,28 @@ const char *auth_types[] = {
     NULL
 };
 
+static void mag_set_req_data(request_rec *req,
+                             struct mag_config *cfg,
+                             struct mag_conn *mc)
+{
+    apr_table_set(req->subprocess_env, "GSS_NAME", mc->gss_name);
+    apr_table_set(req->subprocess_env, "GSS_SESSION_EXPIRATION",
+                  apr_psprintf(req->pool,
+                               "%ld", (long)mc->expiration));
+    req->ap_auth_type = apr_pstrdup(req->pool,
+                                    auth_types[mc->auth_type]);
+    req->user = apr_pstrdup(req->pool, mc->user_name);
+    if (cfg->deleg_ccache_dir && mc->delegated) {
+        char *ccname;
+        ccname = mag_gss_name_to_ccache_name(req,
+                                             cfg->deleg_ccache_dir,
+                                             mc->gss_name);
+        if (ccname) {
+            mag_set_KRB5CCANME(req, ccname);
+        }
+    }
+}
+
 static int mag_auth(request_rec *req)
 {
     const char *type;
@@ -397,44 +419,25 @@ static int mag_auth(request_rec *req)
         mag_check_session(req, cfg, &mc);
     }
 
+    auth_header = apr_table_get(req->headers_in, "Authorization");
+
     if (mc) {
         /* register the context in the memory pool, so it can be freed
          * when the connection/request is terminated */
         apr_pool_userdata_set(mc, "mag_conn_ptr",
                               mag_conn_destroy, mc->parent);
 
-        if (mc->established) {
+        if (mc->established && !auth_header) {
             ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, req,
                           "Already established context found!");
-            apr_table_set(req->subprocess_env, "GSS_NAME", mc->gss_name);
-            apr_table_set(req->subprocess_env, "GSS_SESSION_EXPIRATION",
-                          apr_psprintf(req->pool,
-                                       "%ld", (long)mc->expiration));
-            req->ap_auth_type = apr_pstrdup(req->pool,
-                                            auth_types[mc->auth_type]);
-            req->user = apr_pstrdup(req->pool, mc->user_name);
-            if (cfg->deleg_ccache_dir && mc->delegated) {
-                char *ccname;
-                ccname = mag_gss_name_to_ccache_name(req,
-                                                     cfg->deleg_ccache_dir,
-                                                     mc->gss_name);
-                if (ccname) {
-                    mag_set_KRB5CCANME(req, ccname);
-                }
-            }
-            if (mc->auth_type != AUTH_TYPE_BASIC) {
-                /* In case we have basic auth, we need to check if the session
-                 * matches the credentials that have been sent */
-                ret = OK;
-                goto done;
-            }
+            mag_set_req_data(req, cfg, mc);
         }
         pctx = &mc->ctx;
     } else {
         pctx = &ctx;
     }
 
-    auth_header = apr_table_get(req->headers_in, "Authorization");
+    /* We can proceed only if we do have an auth header */
     if (!auth_header) goto done;
 
     auth_header_type = ap_getword_white(req->pool, &auth_header);
@@ -472,7 +475,11 @@ static int mag_auth(request_rec *req)
         ba_user.length = strlen(ba_user.value);
         ba_pwd.length = strlen(ba_pwd.value);
 
-        if (mc && mag_basic_check(cfg, mc, ba_user, ba_pwd)) {
+        if (mc && mc->established &&
+            mag_basic_check(cfg, mc, ba_user, ba_pwd)) {
+            ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, req,
+                          "Already established BASIC AUTH context found!");
+            mag_set_req_data(req, cfg, mc);
             ret = OK;
             goto done;
         }
