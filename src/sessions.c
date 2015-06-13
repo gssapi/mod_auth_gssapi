@@ -279,10 +279,28 @@ static int mag_basic_hmac(struct seal_key *key, unsigned char *mac,
     return HMAC_BUFFER(key, &databuf, &hmacbuf);
 }
 
+static int mag_get_mac_size(struct mag_config *cfg)
+{
+    apr_status_t rc;
+
+    if (!cfg->mag_skey) {
+        ap_log_perror(APLOG_MARK, APLOG_INFO, 0, cfg->pool,
+                      "Session key not available, generating new one.");
+        rc = SEAL_KEY_CREATE(cfg->pool, &cfg->mag_skey, NULL);
+        if (rc != OK) {
+            ap_log_perror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, cfg->pool,
+                          "Failed to create sealing key!");
+            return 0;
+        }
+    }
+
+    return get_mac_size(cfg->mag_skey);
+}
+
 bool mag_basic_check(struct mag_config *cfg, struct mag_conn *mc,
                      gss_buffer_desc user, gss_buffer_desc pwd)
 {
-    int mac_size = get_mac_size(cfg->mag_skey);
+    int mac_size = mag_get_mac_size(cfg);
     unsigned char mac[mac_size];
     int ret, i, j;
     bool res = false;
@@ -309,7 +327,7 @@ done:
 void mag_basic_cache(struct mag_config *cfg, struct mag_conn *mc,
                      gss_buffer_desc user, gss_buffer_desc pwd)
 {
-    int mac_size = get_mac_size(cfg->mag_skey);
+    int mac_size = mag_get_mac_size(cfg);
     unsigned char mac[mac_size];
     int ret;
 
