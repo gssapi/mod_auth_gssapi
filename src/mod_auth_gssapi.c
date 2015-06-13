@@ -709,12 +709,12 @@ static int mag_auth(request_rec *req)
             vtime = MIN_SESS_EXP_TIME;
         }
         mc->expiration = expiration;
-        if (cfg->use_sessions) {
-            mag_attempt_session(req, cfg, mc);
-        }
         mc->auth_type = auth_type;
         if (auth_type == AUTH_TYPE_BASIC) {
             mag_basic_cache(cfg, mc, ba_user, ba_pwd);
+        }
+        if (cfg->use_sessions) {
+            mag_attempt_session(req, cfg, mc);
         }
     }
 
