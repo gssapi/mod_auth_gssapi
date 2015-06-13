@@ -7,6 +7,7 @@ GssapiSessionModule DEFINITIONS ::= BEGIN
         delegated   [1] BOOLEAN,
         expiration  [2] Uint32,
         username    [3] OCTET STRING,
-        gssname     [4] OCTET STRING
+        gssname     [4] OCTET STRING,
+        basichash   [5] OCTET STRING
     }
 END

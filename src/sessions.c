@@ -176,6 +176,11 @@ void mag_check_session(request_rec *req,
                                 gsessdata->gssname.size);
     if (!mc->gss_name) goto done;
 
+    mc->basic_hash.length = gsessdata->basichash.size;
+    mc->basic_hash.value = apr_palloc(mc->parent, mc->basic_hash.length);
+    memcpy(mc->basic_hash.value,
+           gsessdata->basichash.buf, gsessdata->basichash.size);
+
     /* OK we have a valid token */
     mc->established = true;
 
@@ -221,6 +226,10 @@ void mag_attempt_session(request_rec *req,
     if (OCTET_STRING_fromString(&gsessdata.username, mc->user_name) != 0)
         goto done;
     if (OCTET_STRING_fromString(&gsessdata.gssname, mc->gss_name) != 0)
+        goto done;
+    if (OCTET_STRING_fromBuf(&gsessdata.basichash,
+                             (const char *)mc->basic_hash.value,
+                             mc->basic_hash.length) != 0)
         goto done;
     ret = encode_GSSSessionData(req->pool, &gsessdata,
                                 &plainbuf.value, &plainbuf.length);
@@ -279,6 +288,7 @@ bool mag_basic_check(struct mag_config *cfg, struct mag_conn *mc,
     bool res = false;
 
     if (mac_size == 0) return false;
+    if (mc->basic_hash.value == NULL) return false;
 
     ret = mag_basic_hmac(cfg->mag_skey, mac, user, pwd);
     if (ret != 0) goto done;

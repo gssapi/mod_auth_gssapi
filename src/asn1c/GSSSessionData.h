@@ -28,6 +28,7 @@ typedef struct GSSSessionData {
 	Uint32_t	 expiration;
 	OCTET_STRING_t	 username;
 	OCTET_STRING_t	 gssname;
+	OCTET_STRING_t	 basichash;
 	
 	/* Context for parsing across buffer boundaries */
 	asn_struct_ctx_t _asn_ctx;
