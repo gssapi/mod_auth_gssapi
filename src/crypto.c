@@ -82,15 +82,41 @@ done:
     return ret;
 }
 
+apr_status_t HMAC_BUFFER(struct seal_key *skey, struct databuf *buffer,
+                         struct databuf *result)
+{
+    HMAC_CTX hmac_ctx = { 0 };
+    unsigned int len;
+    int ret;
+
+    /* now MAC the buffer */
+    HMAC_CTX_init(&hmac_ctx);
+
+    ret = HMAC_Init_ex(&hmac_ctx, skey->hkey,
+                       skey->cipher->key_len, skey->md, NULL);
+    if (ret == 0) goto done;
+
+    ret = HMAC_Update(&hmac_ctx, buffer->value, buffer->length);
+    if (ret == 0) goto done;
+
+    ret = HMAC_Final(&hmac_ctx, result->value, &len);
+
+done:
+    HMAC_CTX_cleanup(&hmac_ctx);
+    if (ret == 0) return EFAULT;
+
+    result->length = len;
+    return 0;
+}
+
 apr_status_t SEAL_BUFFER(apr_pool_t *p, struct seal_key *skey,
                          struct databuf *plain, struct databuf *cipher)
 {
     int blksz = skey->cipher->block_size;
     apr_status_t err = EFAULT;
     EVP_CIPHER_CTX ctx = { 0 };
-    HMAC_CTX hmac_ctx = { 0 };
     uint8_t rbuf[blksz];
-    unsigned int len;
+    struct databuf hmacbuf;
     int outlen, totlen;
     int ret;
 
@@ -132,24 +158,16 @@ apr_status_t SEAL_BUFFER(apr_pool_t *p, struct seal_key *skey,
     totlen += outlen;
 
     /* now MAC the buffer */
-    HMAC_CTX_init(&hmac_ctx);
+    cipher->length = totlen;
+    hmacbuf.value = &cipher->value[totlen];
+    ret = HMAC_BUFFER(skey, cipher, &hmacbuf);
+    if (ret != 0) goto done;
 
-    ret = HMAC_Init_ex(&hmac_ctx, skey->hkey,
-                       skey->cipher->key_len, skey->md, NULL);
-    if (ret == 0) goto done;
-
-    ret = HMAC_Update(&hmac_ctx, cipher->value, totlen);
-    if (ret == 0) goto done;
-
-    ret = HMAC_Final(&hmac_ctx, &cipher->value[totlen], &len);
-    if (ret == 0) goto done;
-
-    cipher->length = totlen + len;
+    cipher->length += hmacbuf.length;
     err = 0;
 
 done:
     EVP_CIPHER_CTX_cleanup(&ctx);
-    HMAC_CTX_cleanup(&hmac_ctx);
     return err;
 }
 
@@ -158,29 +176,19 @@ apr_status_t UNSEAL_BUFFER(apr_pool_t *p, struct seal_key *skey,
 {
     apr_status_t err = EFAULT;
     EVP_CIPHER_CTX ctx = { 0 };
-    HMAC_CTX hmac_ctx = { 0 };
     unsigned char mac[skey->md->md_size];
-    unsigned int len;
+    struct databuf hmacbuf;
     int outlen, totlen;
     volatile bool equal = true;
     int ret, i;
 
     /* check MAC first */
-    HMAC_CTX_init(&hmac_ctx);
-
-    ret = HMAC_Init_ex(&hmac_ctx, skey->hkey,
-                       skey->cipher->key_len, skey->md, NULL);
-    if (ret == 0) goto done;
-
     cipher->length -= skey->md->md_size;
+    hmacbuf.value = mac;
+    ret = HMAC_BUFFER(skey, cipher, &hmacbuf);
+    if (ret != 0) goto done;
 
-    ret = HMAC_Update(&hmac_ctx, cipher->value, cipher->length);
-    if (ret == 0) goto done;
-
-    ret = HMAC_Final(&hmac_ctx, mac, &len);
-    if (ret == 0) goto done;
-
-    if (len != skey->md->md_size) goto done;
+    if (hmacbuf.length != skey->md->md_size) goto done;
     for (i = 0; i < skey->md->md_size; i++) {
         if (cipher->value[cipher->length + i] != mac[i]) equal = false;
         /* not breaking intentionally,
@@ -223,6 +231,5 @@ apr_status_t UNSEAL_BUFFER(apr_pool_t *p, struct seal_key *skey,
 
 done:
     EVP_CIPHER_CTX_cleanup(&ctx);
-    HMAC_CTX_cleanup(&hmac_ctx);
     return err;
 }
