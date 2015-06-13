@@ -233,3 +233,12 @@ done:
     EVP_CIPHER_CTX_cleanup(&ctx);
     return err;
 }
+
+int get_mac_size(struct seal_key *skey)
+{
+    if (skey) {
+        return skey->md->md_size;
+    } else {
+        return 0;
+    }
+}

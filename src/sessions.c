@@ -255,3 +255,58 @@ done:
     ASN_STRUCT_FREE_CONTENTS_ONLY(asn_DEF_GSSSessionData, &gsessdata);
 }
 
+static int mag_basic_hmac(struct seal_key *key, unsigned char *mac,
+                          gss_buffer_desc user, gss_buffer_desc pwd)
+{
+    struct databuf hmacbuf = { mac, 0 };
+    int data_size = user.length + pwd.length + 1;
+    unsigned char data[data_size];
+    struct databuf databuf = { data, data_size };
+
+    memcpy(data, user.value, user.length);
+    data[user.length] = '\0';
+    memcpy(&data[user.length + 1], pwd.value, pwd.length);
+
+    return HMAC_BUFFER(key, &databuf, &hmacbuf);
+}
+
+bool mag_basic_check(struct mag_config *cfg, struct mag_conn *mc,
+                     gss_buffer_desc user, gss_buffer_desc pwd)
+{
+    int mac_size = get_mac_size(cfg->mag_skey);
+    unsigned char mac[mac_size];
+    int ret, i, j;
+    bool res = false;
+
+    if (mac_size == 0) return false;
+
+    ret = mag_basic_hmac(cfg->mag_skey, mac, user, pwd);
+    if (ret != 0) goto done;
+
+    for (i = 0, j = 0; i < mac_size; i++) {
+        if (mc->basic_hash.value[i] != mac[i]) j++;
+    }
+    if (j == 0) res = true;
+
+done:
+    if (res == false) {
+        mc->basic_hash.value = NULL;
+        mc->basic_hash.length = 0;
+    }
+    return res;
+}
+
+void mag_basic_cache(struct mag_config *cfg, struct mag_conn *mc,
+                     gss_buffer_desc user, gss_buffer_desc pwd)
+{
+    int mac_size = get_mac_size(cfg->mag_skey);
+    unsigned char mac[mac_size];
+    int ret;
+
+    ret = mag_basic_hmac(cfg->mag_skey, mac, user, pwd);
+    if (ret != 0) return;
+
+    mc->basic_hash.length = mac_size;
+    mc->basic_hash.value = apr_palloc(mc->parent, mac_size);
+    memcpy(mc->basic_hash.value, mac, mac_size);
+}

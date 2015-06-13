@@ -68,6 +68,7 @@ struct mag_conn {
     time_t expiration;
     int auth_type;
     bool delegated;
+    struct databuf basic_hash;
 };
 
 #define discard_const(ptr) ((void *)((uintptr_t)(ptr)))

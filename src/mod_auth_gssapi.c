@@ -422,8 +422,12 @@ static int mag_auth(request_rec *req)
                     mag_set_KRB5CCANME(req, ccname);
                 }
             }
-            ret = OK;
-            goto done;
+            if (mc->auth_type != AUTH_TYPE_BASIC) {
+                /* In case we have basic auth, we need to check if the session
+                 * matches the credentials that have been sent */
+                ret = OK;
+                goto done;
+            }
         }
         pctx = &mc->ctx;
     } else {
@@ -467,6 +471,12 @@ static int mag_auth(request_rec *req)
         }
         ba_user.length = strlen(ba_user.value);
         ba_pwd.length = strlen(ba_pwd.value);
+
+        if (mc && mag_basic_check(cfg, mc, ba_user, ba_pwd)) {
+            ret = OK;
+            goto done;
+        }
+
         maj = gss_import_name(&min, &ba_user, GSS_C_NT_USER_NAME, &client);
         if (GSS_ERROR(maj)) {
             ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
@@ -609,10 +619,6 @@ static int mag_auth(request_rec *req)
         goto done;
     }
     if (auth_type == AUTH_TYPE_BASIC) {
-        if (mc) {
-            apr_pool_cleanup_run(mc->parent, mc, mag_conn_destroy);
-            mc = NULL;
-        }
         while (maj == GSS_S_CONTINUE_NEEDED) {
             gss_release_buffer(&min, &input);
             /* output and input are inverted here, this is intentional */
@@ -707,6 +713,9 @@ static int mag_auth(request_rec *req)
             mag_attempt_session(req, cfg, mc);
         }
         mc->auth_type = auth_type;
+        if (auth_type == AUTH_TYPE_BASIC) {
+            mag_basic_cache(cfg, mc, ba_user, ba_pwd);
+        }
     }
 
     if (cfg->send_persist)

@@ -18,3 +18,4 @@ apr_status_t SEAL_BUFFER(apr_pool_t *p, struct seal_key *skey,
                          struct databuf *plain, struct databuf *cipher);
 apr_status_t UNSEAL_BUFFER(apr_pool_t *p, struct seal_key *skey,
                            struct databuf *cipher, struct databuf *plain);
+int get_mac_size(struct seal_key *skey);
