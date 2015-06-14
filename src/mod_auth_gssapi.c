@@ -110,8 +110,8 @@ static apr_status_t mag_conn_destroy(void *ptr)
 
     if (mc->ctx) {
         (void)gss_delete_sec_context(&min, &mc->ctx, GSS_C_NO_BUFFER);
-        mc->established = false;
     }
+    memset(mc, 0, sizeof(struct mag_conn));
     return APR_SUCCESS;
 }
 
@@ -452,6 +452,13 @@ static int mag_auth(request_rec *req)
         }
     }
 
+    if (mc && mc->established && auth_type != AUTH_TYPE_BASIC) {
+        /* if we are re-authenticating make sure the conn context
+         * is cleaned up so we do not accidentally reuse an existing
+         * established context */
+        mag_conn_destroy(mc);
+    }
+
     switch (auth_type) {
     case AUTH_TYPE_NEGOTIATE:
         if (!parse_auth_header(req->pool, &auth_header, &input)) {
@@ -477,13 +484,16 @@ static int mag_auth(request_rec *req)
         ba_user.length = strlen(ba_user.value);
         ba_pwd.length = strlen(ba_pwd.value);
 
-        if (mc && mc->established &&
-            mag_basic_check(cfg, mc, ba_user, ba_pwd)) {
-            ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, req,
-                          "Already established BASIC AUTH context found!");
-            mag_set_req_data(req, cfg, mc);
-            ret = OK;
-            goto done;
+        if (mc && mc->established) {
+            if (mag_basic_check(cfg, mc, ba_user, ba_pwd)) {
+                ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, req,
+                              "Already established BASIC AUTH context found!");
+                mag_set_req_data(req, cfg, mc);
+                ret = OK;
+                goto done;
+            } else {
+                mag_conn_destroy(mc);
+            }
         }
 
         maj = gss_import_name(&min, &ba_user, GSS_C_NT_USER_NAME, &client);
