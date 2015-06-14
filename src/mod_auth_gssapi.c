@@ -24,6 +24,10 @@
 
 #include "mod_auth_gssapi.h"
 
+const gss_OID_desc gss_mech_spnego = {
+    6, "\x2b\x06\x01\x05\x05\x02"
+};
+
 const gss_OID_desc gss_mech_ntlmssp = {
     GSS_NTLMSSP_OID_LENGTH, GSS_NTLMSSP_OID_STRING
 };
@@ -530,6 +534,8 @@ static int mag_auth(request_rec *req)
         (void)gss_release_cred(&min, &server_cred);
     }
 
+    desired_mechs = cfg->allowed_mechs;
+
     /* implicit auth for subrequests if main auth already happened */
     if (!ap_is_initial_req(req) && req->main != NULL) {
         type = ap_auth_type(req->main);
@@ -1009,6 +1015,9 @@ static const char *mag_allow_mech(cmd_parms *parms, void *mconfig,
                                          sizeof(gss_OID_set_desc));
         size = sizeof(gss_OID) * MAX_ALLOWED_MECHS;
         cfg->allowed_mechs->elements = apr_palloc(parms->pool, size);
+
+        cfg->allowed_mechs->elements[0] = gss_mech_spnego;
+        cfg->allowed_mechs->count++;
     }
 
     if (strcmp(w, "krb5") == 0) {
