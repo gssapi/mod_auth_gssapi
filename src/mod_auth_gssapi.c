@@ -424,8 +424,8 @@ static int mag_auth(request_rec *req)
     if (mc) {
         /* register the context in the memory pool, so it can be freed
          * when the connection/request is terminated */
-        apr_pool_userdata_set(mc, "mag_conn_ptr",
-                              mag_conn_destroy, mc->parent);
+        apr_pool_cleanup_register(mc->parent, (void *) mc,
+                                  mag_conn_destroy, apr_pool_cleanup_null);
 
         if (mc->established && !auth_header) {
             ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, req,
