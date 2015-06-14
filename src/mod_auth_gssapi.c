@@ -431,6 +431,8 @@ static int mag_auth(request_rec *req)
             ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, req,
                           "Already established context found!");
             mag_set_req_data(req, cfg, mc);
+            ret = OK;
+            goto done;
         }
         pctx = &mc->ctx;
     } else {
