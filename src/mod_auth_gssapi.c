@@ -332,6 +332,158 @@ static void mag_set_req_data(request_rec *req,
     }
 }
 
+static bool mag_auth_basic(request_rec *req,
+                           struct mag_config *cfg,
+                           gss_buffer_desc ba_user,
+                           gss_buffer_desc ba_pwd,
+                           gss_cred_id_t acquired_cred,
+                           gss_cred_usage_t cred_usage,
+                           gss_name_t *client,
+                           gss_OID *mech_type,
+                           gss_cred_id_t *delegated_cred,
+                           uint32_t *vtime)
+{
+#ifdef HAVE_GSS_KRB5_CCACHE_NAME
+    const char *user_ccache = NULL;
+    const char *orig_ccache = NULL;
+    long long unsigned int rndname;
+    apr_status_t rs;
+#endif
+    gss_name_t user = GSS_C_NO_NAME;
+    gss_cred_id_t user_cred = GSS_C_NO_CREDENTIAL;
+    gss_ctx_id_t user_ctx = GSS_C_NO_CONTEXT;
+    gss_name_t server = GSS_C_NO_NAME;
+    gss_cred_id_t server_cred = GSS_C_NO_CREDENTIAL;
+    gss_ctx_id_t server_ctx = GSS_C_NO_CONTEXT;
+    gss_buffer_desc input = GSS_C_EMPTY_BUFFER;
+    gss_buffer_desc output = GSS_C_EMPTY_BUFFER;
+    uint32_t init_flags = 0;
+    uint32_t maj, min;
+    bool ret = false;
+
+#ifdef HAVE_GSS_KRB5_CCACHE_NAME
+    rs = apr_generate_random_bytes((unsigned char *)(&rndname),
+                                   sizeof(long long unsigned int));
+    if (rs != APR_SUCCESS) {
+        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
+                      "Failed to generate random ccache name");
+        goto done;
+    }
+    user_ccache = apr_psprintf(req->pool, "MEMORY:user_%qu", rndname);
+    maj = gss_krb5_ccache_name(&min, user_ccache, &orig_ccache);
+    if (GSS_ERROR(maj)) {
+        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
+                      "In Basic Auth, %s",
+                      mag_error(req, "gss_krb5_ccache_name() "
+                                "failed", maj, min));
+        goto done;
+    }
+#endif
+
+    maj = gss_import_name(&min, &ba_user, GSS_C_NT_USER_NAME, &user);
+    if (GSS_ERROR(maj)) {
+        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
+                      "In Basic Auth, %s",
+                      mag_error(req, "gss_import_name() failed",
+                                maj, min));
+        goto done;
+    }
+
+    maj = gss_acquire_cred_with_password(&min, user, &ba_pwd,
+                                         GSS_C_INDEFINITE,
+                                         cfg->allowed_mechs,
+                                         GSS_C_INITIATE,
+                                         &user_cred, NULL, NULL);
+    if (GSS_ERROR(maj)) {
+        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
+                      "In Basic Auth, %s",
+                      mag_error(req, "gss_acquire_cred_with_password() "
+                                "failed", maj, min));
+        goto done;
+    }
+
+    if (cred_usage == GSS_C_BOTH) {
+        /* If GSS_C_BOTH is used then inquire_cred will return the client
+         * name instead of the SPN of the server credentials. Therefore we
+         * need to acquire a different set of credential setting
+         * GSS_C_ACCEPT explicitly */
+        if (!mag_acquire_creds(req, cfg, cfg->allowed_mechs,
+                               GSS_C_ACCEPT, &server_cred, NULL)) {
+            goto done;
+        }
+    } else {
+        server_cred = acquired_cred;
+    }
+    maj = gss_inquire_cred(&min, server_cred, &server,
+                           NULL, NULL, NULL);
+    if (GSS_ERROR(maj)) {
+        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
+                      "%s", mag_error(req, "gss_inquired_cred_() "
+                                      "failed", maj, min));
+        goto done;
+    }
+
+#ifdef HAVE_CRED_STORE
+    if (cfg->deleg_ccache_dir) {
+        /* delegate ourselves credentials so we store them as requested */
+        init_flags |= GSS_C_DELEG_FLAG;
+    }
+#endif
+
+    do {
+        /* output and input are inverted here, this is intentional */
+        maj = gss_init_sec_context(&min, user_cred, &user_ctx, server,
+                                   GSS_C_NO_OID, init_flags, 300,
+                                   GSS_C_NO_CHANNEL_BINDINGS, &output,
+                                   NULL, &input, NULL, NULL);
+        if (GSS_ERROR(maj)) {
+            ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
+                          "%s", mag_error(req, "gss_init_sec_context() "
+                                          "failed", maj, min));
+            goto done;
+        }
+        gss_release_buffer(&min, &output);
+        maj = gss_accept_sec_context(&min, &server_ctx, acquired_cred,
+                                     &input, GSS_C_NO_CHANNEL_BINDINGS,
+                                     client, mech_type, &output, NULL,
+                                     vtime, delegated_cred);
+        if (GSS_ERROR(maj)) {
+            ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
+                          "%s", mag_error(req, "gss_accept_sec_context()"
+                                          " failed", maj, min));
+            goto done;
+        }
+        gss_release_buffer(&min, &input);
+    } while (maj == GSS_S_CONTINUE_NEEDED);
+
+    ret = true;
+
+done:
+    gss_release_buffer(&min, &output);
+    gss_release_buffer(&min, &input);
+    gss_release_name(&min, &server);
+    if (server_cred != acquired_cred) {
+        gss_release_cred(&min, &server_cred);
+    }
+    gss_delete_sec_context(&min, &server_ctx, GSS_C_NO_BUFFER);
+    gss_release_name(&min, &user);
+    gss_release_cred(&min, &user_cred);
+    gss_delete_sec_context(&min, &user_ctx, GSS_C_NO_BUFFER);
+#ifdef HAVE_GSS_KRB5_CCACHE_NAME
+    if (user_ccache != NULL) {
+        maj = gss_krb5_ccache_name(&min, orig_ccache, NULL);
+        if (maj != GSS_S_COMPLETE) {
+            ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
+                          "Failed to restore per-thread ccache, %s",
+                          mag_error(req, "gss_krb5_ccache_name() "
+                                    "failed", maj, min));
+        }
+    }
+#endif
+    return ret;
+}
+
+
 static int mag_auth(request_rec *req)
 {
     const char *type;
@@ -348,12 +500,9 @@ static int mag_auth(request_rec *req)
     gss_buffer_desc ba_user;
     gss_buffer_desc ba_pwd;
     gss_name_t client = GSS_C_NO_NAME;
-    gss_cred_id_t user_cred = GSS_C_NO_CREDENTIAL;
     gss_cred_id_t acquired_cred = GSS_C_NO_CREDENTIAL;
-    gss_cred_id_t server_cred = GSS_C_NO_CREDENTIAL;
     gss_cred_id_t delegated_cred = GSS_C_NO_CREDENTIAL;
     gss_cred_usage_t cred_usage = GSS_C_ACCEPT;
-    uint32_t flags;
     uint32_t vtime;
     uint32_t maj, min;
     char *reply;
@@ -363,13 +512,6 @@ static int mag_auth(request_rec *req)
     gss_OID_set desired_mechs = GSS_C_NO_OID_SET;
     gss_buffer_desc lname = GSS_C_EMPTY_BUFFER;
     struct mag_conn *mc = NULL;
-    gss_ctx_id_t user_ctx = GSS_C_NO_CONTEXT;
-    gss_name_t server = GSS_C_NO_NAME;
-#ifdef HAVE_GSS_KRB5_CCACHE_NAME
-    const char *user_ccache = NULL;
-    const char *orig_ccache = NULL;
-#endif
-    uint32_t init_flags = 0;
     time_t expiration;
     int i;
 
@@ -382,6 +524,7 @@ static int mag_auth(request_rec *req)
 
     if (!cfg->allowed_mechs) {
         /* Try to fetch the default set if not explicitly configured */
+        gss_cred_id_t server_cred = GSS_C_NO_CREDENTIAL;
         (void)mag_acquire_creds(req, cfg, GSS_C_NO_OID_SET, GSS_C_ACCEPT,
                                 &server_cred, &cfg->allowed_mechs);
         (void)gss_release_cred(&min, &server_cred);
@@ -543,108 +686,13 @@ static int mag_auth(request_rec *req)
     }
 
     if (auth_type == AUTH_TYPE_BASIC) {
-        maj = gss_import_name(&min, &ba_user, GSS_C_NT_USER_NAME, &client);
-        if (GSS_ERROR(maj)) {
-            ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
-                          "In Basic Auth, %s",
-                          mag_error(req, "gss_import_name() failed",
-                                    maj, min));
-            goto done;
+        if (mag_auth_basic(req, cfg, ba_user, ba_pwd,
+                           acquired_cred, cred_usage,
+                           &client, &mech_type,
+                           &delegated_cred, &vtime)) {
+            goto complete;
         }
-#ifdef HAVE_GSS_KRB5_CCACHE_NAME
-        /* Set a per-thread ccache in case we are using kerberos,
-         * it is not elegant but avoids interference between threads */
-        long long unsigned int rndname;
-        apr_status_t rs;
-        rs = apr_generate_random_bytes((unsigned char *)(&rndname),
-                                       sizeof(long long unsigned int));
-        if (rs != APR_SUCCESS) {
-            ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
-                          "Failed to generate random ccache name");
-            goto done;
-        }
-        user_ccache = apr_psprintf(req->pool, "MEMORY:user_%qu", rndname);
-        maj = gss_krb5_ccache_name(&min, user_ccache, &orig_ccache);
-        if (GSS_ERROR(maj)) {
-            ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
-                          "In Basic Auth, %s",
-                          mag_error(req, "gss_krb5_ccache_name() "
-                                    "failed", maj, min));
-            goto done;
-        }
-#endif
-        maj = gss_acquire_cred_with_password(&min, client, &ba_pwd,
-                                             GSS_C_INDEFINITE,
-                                             cfg->allowed_mechs,
-                                             GSS_C_INITIATE,
-                                             &user_cred, NULL, NULL);
-        if (GSS_ERROR(maj)) {
-            ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
-                          "In Basic Auth, %s",
-                          mag_error(req, "gss_acquire_cred_with_password() "
-                                    "failed", maj, min));
-            goto done;
-        }
-        gss_release_name(&min, &client);
-
-        if (cred_usage == GSS_C_BOTH) {
-            /* If GSS_C_BOTH is used then inquire_cred will return the client
-             * name instead of the SPN of the server credentials. Therefore we
-             * need to acquire a different set of credential setting
-             * GSS_C_ACCEPT explicitly */
-            if (!mag_acquire_creds(req, cfg, cfg->allowed_mechs,
-                                   GSS_C_ACCEPT, &server_cred, NULL)) {
-                goto done;
-            }
-        } else {
-            server_cred = acquired_cred;
-        }
-        maj = gss_inquire_cred(&min, server_cred, &server,
-                               NULL, NULL, NULL);
-        if (GSS_ERROR(maj)) {
-            ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
-                          "%s", mag_error(req, "gss_inquired_cred_() "
-                                          "failed", maj, min));
-            goto done;
-        }
-        if (server_cred != acquired_cred) {
-            gss_release_cred(&min, &server_cred);
-        }
-
-#ifdef HAVE_CRED_STORE
-        if (cfg->deleg_ccache_dir) {
-            /* delegate ourselves credentials so we store them as requested */
-            init_flags |= GSS_C_DELEG_FLAG;
-        }
-#endif
-
-        do {
-            /* output and input are inverted here, this is intentional */
-            maj = gss_init_sec_context(&min, user_cred, &user_ctx, server,
-                                       GSS_C_NO_OID, init_flags, 300,
-                                       GSS_C_NO_CHANNEL_BINDINGS, &output,
-                                       NULL, &input, NULL, NULL);
-            if (GSS_ERROR(maj)) {
-                ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
-                              "%s", mag_error(req, "gss_init_sec_context() "
-                                              "failed", maj, min));
-                goto done;
-            }
-            gss_release_buffer(&min, &output);
-            maj = gss_accept_sec_context(&min, pctx, acquired_cred,
-                                         &input, GSS_C_NO_CHANNEL_BINDINGS,
-                                         &client, &mech_type, &output, &flags,
-                                         &vtime, &delegated_cred);
-            if (GSS_ERROR(maj)) {
-                ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
-                              "%s", mag_error(req, "gss_accept_sec_context()"
-                                              " failed", maj, min));
-                goto done;
-            }
-            gss_release_buffer(&min, &input);
-        } while (maj == GSS_S_CONTINUE_NEEDED);
-        gss_release_buffer(&min, &output);
-        goto complete;
+        goto done;
     }
 
     if (auth_type == AUTH_TYPE_NEGOTIATE &&
@@ -660,7 +708,7 @@ static int mag_auth(request_rec *req)
 
     maj = gss_accept_sec_context(&min, pctx, acquired_cred,
                                  &input, GSS_C_NO_CHANNEL_BINDINGS,
-                                 &client, &mech_type, &output, &flags, &vtime,
+                                 &client, &mech_type, &output, NULL, &vtime,
                                  &delegated_cred);
     if (GSS_ERROR(maj)) {
         ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req, "%s",
@@ -771,26 +819,12 @@ done:
                                        ap_auth_name(req)));
         }
     }
-#ifdef HAVE_GSS_KRB5_CCACHE_NAME
-    if (user_ccache != NULL) {
-        maj = gss_krb5_ccache_name(&min, orig_ccache, NULL);
-        if (maj != GSS_S_COMPLETE) {
-            ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
-                          "Failed to restore per-thread ccache, %s",
-                          mag_error(req, "gss_krb5_ccache_name() "
-                                    "failed", maj, min));
-        }
-    }
-#endif
     if (ctx != GSS_C_NO_CONTEXT)
         gss_delete_sec_context(&min, &ctx, GSS_C_NO_BUFFER);
-    gss_delete_sec_context(&min, &user_ctx, GSS_C_NO_BUFFER);
-    gss_release_cred(&min, &user_cred);
     gss_release_cred(&min, &acquired_cred);
     gss_release_cred(&min, &delegated_cred);
     gss_release_buffer(&min, &output);
     gss_release_name(&min, &client);
-    gss_release_name(&min, &server);
     gss_release_buffer(&min, &name);
     gss_release_buffer(&min, &lname);
     return ret;
