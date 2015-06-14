@@ -618,43 +618,7 @@ static int mag_auth(request_rec *req)
         }
 #endif
 
-        /* output and input are inverted here, this is intentional */
-        maj = gss_init_sec_context(&min, user_cred, &user_ctx, server,
-                                   GSS_C_NO_OID, init_flags, 300,
-                                   GSS_C_NO_CHANNEL_BINDINGS, &output,
-                                   NULL, &input, NULL, NULL);
-        if (GSS_ERROR(maj)) {
-            ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
-                          "%s", mag_error(req, "gss_init_sec_context() "
-                                          "failed", maj, min));
-            goto done;
-        }
-    }
-
-    if (auth_type == AUTH_TYPE_NEGOTIATE &&
-        cfg->allowed_mechs != GSS_C_NO_OID_SET) {
-        maj = gss_set_neg_mechs(&min, acquired_cred, cfg->allowed_mechs);
-        if (GSS_ERROR(maj)) {
-            ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req, "%s",
-                          mag_error(req, "gss_set_neg_mechs() failed",
-                                    maj, min));
-            goto done;
-        }
-    }
-
-    maj = gss_accept_sec_context(&min, pctx, acquired_cred,
-                                 &input, GSS_C_NO_CHANNEL_BINDINGS,
-                                 &client, &mech_type, &output, &flags, &vtime,
-                                 &delegated_cred);
-    if (GSS_ERROR(maj)) {
-        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req, "%s",
-                      mag_error(req, "gss_accept_sec_context() failed",
-                                maj, min));
-        goto done;
-    }
-    if (auth_type == AUTH_TYPE_BASIC) {
-        while (maj == GSS_S_CONTINUE_NEEDED) {
-            gss_release_buffer(&min, &input);
+        do {
             /* output and input are inverted here, this is intentional */
             maj = gss_init_sec_context(&min, user_cred, &user_ctx, server,
                                        GSS_C_NO_OID, init_flags, 300,
@@ -677,7 +641,32 @@ static int mag_auth(request_rec *req)
                                               " failed", maj, min));
                 goto done;
             }
+            gss_release_buffer(&min, &input);
+        } while (maj == GSS_S_CONTINUE_NEEDED);
+        gss_release_buffer(&min, &output);
+        goto complete;
+    }
+
+    if (auth_type == AUTH_TYPE_NEGOTIATE &&
+        cfg->allowed_mechs != GSS_C_NO_OID_SET) {
+        maj = gss_set_neg_mechs(&min, acquired_cred, cfg->allowed_mechs);
+        if (GSS_ERROR(maj)) {
+            ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req, "%s",
+                          mag_error(req, "gss_set_neg_mechs() failed",
+                                    maj, min));
+            goto done;
         }
+    }
+
+    maj = gss_accept_sec_context(&min, pctx, acquired_cred,
+                                 &input, GSS_C_NO_CHANNEL_BINDINGS,
+                                 &client, &mech_type, &output, &flags, &vtime,
+                                 &delegated_cred);
+    if (GSS_ERROR(maj)) {
+        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req, "%s",
+                      mag_error(req, "gss_accept_sec_context() failed",
+                                maj, min));
+        goto done;
     } else if (maj == GSS_S_CONTINUE_NEEDED) {
         if (!mc) {
             ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
@@ -691,6 +680,7 @@ static int mag_auth(request_rec *req)
         goto done;
     }
 
+complete:
     /* Always set the GSS name in an env var */
     maj = gss_display_name(&min, client, &name, NULL);
     if (GSS_ERROR(maj)) {
