@@ -431,6 +431,11 @@ static int mag_auth(request_rec *req)
             ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, req,
                           "Already established context found!");
             mag_set_req_data(req, cfg, mc);
+            ret = OK;
+            goto done;
+        } else if (mc->established && mc->auth_type != AUTH_TYPE_BASIC) {
+            apr_pool_cleanup_run(mc->parent, mc, mag_conn_destroy);
+            memset(mc, 0, sizeof(struct mag_conn));
         }
         pctx = &mc->ctx;
     } else {
@@ -482,6 +487,9 @@ static int mag_auth(request_rec *req)
             mag_set_req_data(req, cfg, mc);
             ret = OK;
             goto done;
+        } else if (mc && mc->established) {
+            apr_pool_cleanup_run(mc->parent, mc, mag_conn_destroy);
+            memset(mc, 0, sizeof(struct mag_conn));
         }
 
         maj = gss_import_name(&min, &ba_user, GSS_C_NT_USER_NAME, &client);
