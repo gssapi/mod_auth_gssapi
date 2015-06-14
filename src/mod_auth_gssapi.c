@@ -452,13 +452,6 @@ static int mag_auth(request_rec *req)
         }
     }
 
-    if (mc && mc->established && auth_type != AUTH_TYPE_BASIC) {
-        /* if we are re-authenticating make sure the conn context
-         * is cleaned up so we do not accidentally reuse an existing
-         * established context */
-        mag_conn_destroy(mc);
-    }
-
     switch (auth_type) {
     case AUTH_TYPE_NEGOTIATE:
         if (!parse_auth_header(req->pool, &auth_header, &input)) {
@@ -484,18 +477,55 @@ static int mag_auth(request_rec *req)
         ba_user.length = strlen(ba_user.value);
         ba_pwd.length = strlen(ba_pwd.value);
 
-        if (mc && mc->established) {
-            if (mag_basic_check(cfg, mc, ba_user, ba_pwd)) {
-                ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, req,
-                              "Already established BASIC AUTH context found!");
-                mag_set_req_data(req, cfg, mc);
-                ret = OK;
-                goto done;
-            } else {
-                mag_conn_destroy(mc);
-            }
+        if (mc && mc->established &&
+            mag_basic_check(cfg, mc, ba_user, ba_pwd)) {
+            ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, req,
+                          "Already established BASIC AUTH context found!");
+            mag_set_req_data(req, cfg, mc);
+            ret = OK;
+            goto done;
         }
 
+        break;
+
+    case AUTH_TYPE_RAW_NTLM:
+        if (!is_mech_allowed(cfg, &gss_mech_ntlmssp)) {
+            ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, req,
+                          "NTLM Authentication is not allowed!");
+            goto done;
+        }
+
+        if (!parse_auth_header(req->pool, &auth_header, &input)) {
+            goto done;
+        }
+
+        desired_mechs = discard_const(&gss_mech_set_ntlmssp);
+        break;
+
+    default:
+        goto done;
+    }
+
+    if (mc && mc->established) {
+        /* if we are re-authenticating make sure the conn context
+         * is cleaned up so we do not accidentally reuse an existing
+         * established context */
+        mag_conn_destroy(mc);
+    }
+
+    req->ap_auth_type = apr_pstrdup(req->pool, auth_types[auth_type]);
+
+#ifdef HAVE_CRED_STORE
+    if (cfg->use_s4u2proxy) {
+        cred_usage = GSS_C_BOTH;
+    }
+#endif
+    if (!mag_acquire_creds(req, cfg, desired_mechs,
+                           cred_usage, &acquired_cred, NULL)) {
+        goto done;
+    }
+
+    if (auth_type == AUTH_TYPE_BASIC) {
         maj = gss_import_name(&min, &ba_user, GSS_C_NT_USER_NAME, &client);
         if (GSS_ERROR(maj)) {
             ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
@@ -539,39 +569,7 @@ static int mag_auth(request_rec *req)
             goto done;
         }
         gss_release_name(&min, &client);
-        break;
 
-    case AUTH_TYPE_RAW_NTLM:
-        if (!is_mech_allowed(cfg, &gss_mech_ntlmssp)) {
-            ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, req,
-                          "NTLM Authentication is not allowed!");
-            goto done;
-        }
-
-        if (!parse_auth_header(req->pool, &auth_header, &input)) {
-            goto done;
-        }
-
-        desired_mechs = discard_const(&gss_mech_set_ntlmssp);
-        break;
-
-    default:
-        goto done;
-    }
-
-    req->ap_auth_type = apr_pstrdup(req->pool, auth_types[auth_type]);
-
-#ifdef HAVE_CRED_STORE
-    if (cfg->use_s4u2proxy) {
-        cred_usage = GSS_C_BOTH;
-    }
-#endif
-    if (!mag_acquire_creds(req, cfg, desired_mechs,
-                           cred_usage, &acquired_cred, NULL)) {
-        goto done;
-    }
-
-    if (auth_type == AUTH_TYPE_BASIC) {
         if (cred_usage == GSS_C_BOTH) {
             /* If GSS_C_BOTH is used then inquire_cred will return the client
              * name instead of the SPN of the server credentials. Therefore we
