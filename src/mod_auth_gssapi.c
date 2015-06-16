@@ -340,7 +340,6 @@ static bool mag_auth_basic(request_rec *req,
                            struct mag_config *cfg,
                            gss_buffer_desc ba_user,
                            gss_buffer_desc ba_pwd,
-                           gss_cred_id_t acquired_cred,
                            gss_cred_usage_t cred_usage,
                            gss_name_t *client,
                            gss_OID *mech_type,
@@ -361,6 +360,9 @@ static bool mag_auth_basic(request_rec *req,
     gss_ctx_id_t server_ctx = GSS_C_NO_CONTEXT;
     gss_buffer_desc input = GSS_C_EMPTY_BUFFER;
     gss_buffer_desc output = GSS_C_EMPTY_BUFFER;
+    gss_OID_set allowed_mechs = GSS_C_NO_OID_SET;
+    gss_OID_set_desc all_mechs_desc;
+    gss_OID_set actual_mechs = GSS_C_NO_OID_SET;
     uint32_t init_flags = 0;
     uint32_t maj, min;
     bool ret = false;
@@ -393,37 +395,22 @@ static bool mag_auth_basic(request_rec *req,
         goto done;
     }
 
+    if (cfg->allowed_mechs && cfg->allowed_mechs->count > 1) {
+        all_mechs_desc.count = cfg->allowed_mechs->count - 1;
+        all_mechs_desc.elements = &cfg->allowed_mechs->elements[1];
+        allowed_mechs = &all_mechs_desc;
+    }
+
     maj = gss_acquire_cred_with_password(&min, user, &ba_pwd,
                                          GSS_C_INDEFINITE,
-                                         cfg->allowed_mechs,
+                                         allowed_mechs,
                                          GSS_C_INITIATE,
-                                         &user_cred, NULL, NULL);
+                                         &user_cred, &actual_mechs, NULL);
     if (GSS_ERROR(maj)) {
         ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
                       "In Basic Auth, %s",
                       mag_error(req, "gss_acquire_cred_with_password() "
                                 "failed", maj, min));
-        goto done;
-    }
-
-    if (cred_usage == GSS_C_BOTH) {
-        /* If GSS_C_BOTH is used then inquire_cred will return the client
-         * name instead of the SPN of the server credentials. Therefore we
-         * need to acquire a different set of credential setting
-         * GSS_C_ACCEPT explicitly */
-        if (!mag_acquire_creds(req, cfg, cfg->allowed_mechs,
-                               GSS_C_ACCEPT, &server_cred, NULL)) {
-            goto done;
-        }
-    } else {
-        server_cred = acquired_cred;
-    }
-    maj = gss_inquire_cred(&min, server_cred, &server,
-                           NULL, NULL, NULL);
-    if (GSS_ERROR(maj)) {
-        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
-                      "%s", mag_error(req, "gss_inquired_cred_() "
-                                      "failed", maj, min));
         goto done;
     }
 
@@ -434,45 +421,89 @@ static bool mag_auth_basic(request_rec *req,
     }
 #endif
 
-    do {
-        /* output and input are inverted here, this is intentional */
-        maj = gss_init_sec_context(&min, user_cred, &user_ctx, server,
-                                   GSS_C_NO_OID, init_flags, 300,
-                                   GSS_C_NO_CHANNEL_BINDINGS, &output,
-                                   NULL, &input, NULL, NULL);
-        if (GSS_ERROR(maj)) {
-            ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
-                          "%s", mag_error(req, "gss_init_sec_context() "
-                                          "failed", maj, min));
-            goto done;
-        }
-        gss_release_buffer(&min, &output);
-        maj = gss_accept_sec_context(&min, &server_ctx, acquired_cred,
-                                     &input, GSS_C_NO_CHANNEL_BINDINGS,
-                                     client, mech_type, &output, NULL,
-                                     vtime, delegated_cred);
-        if (GSS_ERROR(maj)) {
-            ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
-                          "%s", mag_error(req, "gss_accept_sec_context()"
-                                          " failed", maj, min));
-            goto done;
-        }
-        gss_release_buffer(&min, &input);
-    } while (maj == GSS_S_CONTINUE_NEEDED);
+    for (int i = 0; i < actual_mechs->count; i++) {
 
-    ret = true;
+        /* skip spnego if present (it is usually present when
+         * cfg->allowed_mechs is not set) */
+        if (gss_oid_equal(&actual_mechs->elements[i],
+                          &gss_mech_spnego)) {
+            continue;
+        }
+
+        /* free these if looping */
+        gss_release_buffer(&min, &output);
+        gss_release_buffer(&min, &input);
+        gss_release_name(&min, &server);
+        gss_release_cred(&min, &server_cred);
+
+        all_mechs_desc.count = 1;
+        all_mechs_desc.elements = &actual_mechs->elements[i];
+
+        /* must acquire with GSS_C_ACCEPT to get the server name */
+        if (!mag_acquire_creds(req, cfg, allowed_mechs,
+                               GSS_C_ACCEPT, &server_cred, NULL)) {
+            continue;
+        }
+        maj = gss_inquire_cred(&min, server_cred, &server,
+                               NULL, NULL, NULL);
+        if (GSS_ERROR(maj)) {
+            ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
+                          "%s", mag_error(req, "gss_inquired_cred_() "
+                                          "failed", maj, min));
+            continue;
+        }
+
+        if (cred_usage == GSS_C_BOTH) {
+            /* reacquire server creds in order to allow delegation */
+            gss_release_cred(&min, &server_cred);
+            if (!mag_acquire_creds(req, cfg, allowed_mechs,
+                                   GSS_C_BOTH, &server_cred, NULL)) {
+                continue;
+            }
+        }
+
+        do {
+            /* output and input are inverted here, this is intentional */
+            maj = gss_init_sec_context(&min, user_cred, &user_ctx, server,
+                                       &actual_mechs->elements[i], init_flags,
+                                       300, GSS_C_NO_CHANNEL_BINDINGS, &output,
+                                       NULL, &input, NULL, NULL);
+            if (GSS_ERROR(maj)) {
+                ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
+                              "%s", mag_error(req, "gss_init_sec_context() "
+                                              "failed", maj, min));
+                break;
+            }
+            gss_release_buffer(&min, &output);
+            maj = gss_accept_sec_context(&min, &server_ctx, server_cred,
+                                         &input, GSS_C_NO_CHANNEL_BINDINGS,
+                                         client, mech_type, &output, NULL,
+                                         vtime, delegated_cred);
+            if (GSS_ERROR(maj)) {
+                ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
+                              "%s", mag_error(req, "gss_accept_sec_context()"
+                                              " failed", maj, min));
+                break;
+            }
+            gss_release_buffer(&min, &input);
+        } while (maj == GSS_S_CONTINUE_NEEDED);
+
+        if (maj == GSS_S_COMPLETE) {
+            ret = true;
+            break;
+        }
+    }
 
 done:
     gss_release_buffer(&min, &output);
     gss_release_buffer(&min, &input);
     gss_release_name(&min, &server);
-    if (server_cred != acquired_cred) {
-        gss_release_cred(&min, &server_cred);
-    }
+    gss_release_cred(&min, &server_cred);
     gss_delete_sec_context(&min, &server_ctx, GSS_C_NO_BUFFER);
     gss_release_name(&min, &user);
     gss_release_cred(&min, &user_cred);
     gss_delete_sec_context(&min, &user_ctx, GSS_C_NO_BUFFER);
+    gss_release_oid_set(&min, &actual_mechs);
 #ifdef HAVE_GSS_KRB5_CCACHE_NAME
     if (user_ccache != NULL) {
         maj = gss_krb5_ccache_name(&min, orig_ccache, NULL);
@@ -692,18 +723,17 @@ static int mag_auth(request_rec *req)
         cred_usage = GSS_C_BOTH;
     }
 #endif
-    if (!mag_acquire_creds(req, cfg, desired_mechs,
-                           cred_usage, &acquired_cred, NULL)) {
-        goto done;
-    }
-
     if (auth_type == AUTH_TYPE_BASIC) {
         if (mag_auth_basic(req, cfg, ba_user, ba_pwd,
-                           acquired_cred, cred_usage,
-                           &client, &mech_type,
+                           cred_usage, &client, &mech_type,
                            &delegated_cred, &vtime)) {
             goto complete;
         }
+        goto done;
+    }
+
+    if (!mag_acquire_creds(req, cfg, desired_mechs,
+                           cred_usage, &acquired_cred, NULL)) {
         goto done;
     }
 
