@@ -514,6 +514,7 @@ static int mag_auth(request_rec *req)
     char *clientname;
     gss_OID mech_type = GSS_C_NO_OID;
     gss_OID_set desired_mechs = GSS_C_NO_OID_SET;
+    gss_OID_set indicated_mechs = GSS_C_NO_OID_SET;
     gss_buffer_desc lname = GSS_C_EMPTY_BUFFER;
     struct mag_conn *mc = NULL;
     time_t expiration;
@@ -526,15 +527,18 @@ static int mag_auth(request_rec *req)
 
     cfg = ap_get_module_config(req->per_dir_config, &auth_gssapi_module);
 
-    if (!cfg->allowed_mechs) {
+    if (cfg->allowed_mechs) {
+        desired_mechs = cfg->allowed_mechs;
+    } else {
         /* Try to fetch the default set if not explicitly configured */
-        gss_cred_id_t server_cred = GSS_C_NO_CREDENTIAL;
-        (void)mag_acquire_creds(req, cfg, GSS_C_NO_OID_SET, GSS_C_ACCEPT,
-                                &server_cred, &cfg->allowed_mechs);
-        (void)gss_release_cred(&min, &server_cred);
+        maj = gss_indicate_mechs(&min, &indicated_mechs);
+        if (maj != GSS_S_COMPLETE) {
+            ap_log_rerror(APLOG_MARK, APLOG_WARNING, 0, req, "%s",
+                          mag_error(req, "gss_indicate_mechs() failed",
+                                    maj, min));
+        }
+        desired_mechs = indicated_mechs;
     }
-
-    desired_mechs = cfg->allowed_mechs;
 
     /* implicit auth for subrequests if main auth already happened */
     if (!ap_is_initial_req(req) && req->main != NULL) {
@@ -827,6 +831,7 @@ done:
                                        ap_auth_name(req)));
         }
     }
+    gss_release_oid_set(&min, &indicated_mechs);
     if (ctx != GSS_C_NO_CONTEXT)
         gss_delete_sec_context(&min, &ctx, GSS_C_NO_BUFFER);
     gss_release_cred(&min, &acquired_cred);
