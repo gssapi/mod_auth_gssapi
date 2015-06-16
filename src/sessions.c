@@ -108,11 +108,7 @@ void mag_check_session(request_rec *req,
 
     mc = *conn;
     if (!mc) {
-        mc = apr_pcalloc(req->pool, sizeof(struct mag_conn));
-        if (!mc) return;
-
-        mc->parent = req->pool;
-        *conn = mc;
+        *conn = mc = mag_new_conn_ctx(req->pool);
     }
 
     rc = mag_session_get(req, sess, MAG_BEARER_KEY, &sessval);
@@ -165,19 +161,19 @@ void mag_check_session(request_rec *req,
     }
 
     /* user name */
-    mc->user_name = apr_pstrndup(mc->parent,
+    mc->user_name = apr_pstrndup(mc->pool,
                                  (char *)gsessdata->username.buf,
                                  gsessdata->username.size);
     if (!mc->user_name) goto done;
 
     /* gssapi name */
-    mc->gss_name = apr_pstrndup(mc->parent,
+    mc->gss_name = apr_pstrndup(mc->pool,
                                 (char *)gsessdata->gssname.buf,
                                 gsessdata->gssname.size);
     if (!mc->gss_name) goto done;
 
     mc->basic_hash.length = gsessdata->basichash.size;
-    mc->basic_hash.value = apr_palloc(mc->parent, mc->basic_hash.length);
+    mc->basic_hash.value = apr_palloc(mc->pool, mc->basic_hash.length);
     memcpy(mc->basic_hash.value,
            gsessdata->basichash.buf, gsessdata->basichash.size);
 
@@ -335,6 +331,6 @@ void mag_basic_cache(struct mag_config *cfg, struct mag_conn *mc,
     if (ret != 0) return;
 
     mc->basic_hash.length = mac_size;
-    mc->basic_hash.value = apr_palloc(mc->parent, mac_size);
+    mc->basic_hash.value = apr_palloc(mc->pool, mac_size);
     memcpy(mc->basic_hash.value, mac, mac_size);
 }

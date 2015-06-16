@@ -96,9 +96,7 @@ static int mag_pre_connection(conn_rec *c, void *csd)
 {
     struct mag_conn *mc;
 
-    mc = apr_pcalloc(c->pool, sizeof(struct mag_conn));
-
-    mc->parent = c->pool;
+    mc = mag_new_conn_ctx(c->pool);
     ap_set_module_config(c->conn_config, &auth_gssapi_module, (void*)mc);
     return OK;
 }
@@ -111,8 +109,32 @@ static apr_status_t mag_conn_destroy(void *ptr)
     if (mc->ctx) {
         (void)gss_delete_sec_context(&min, &mc->ctx, GSS_C_NO_BUFFER);
     }
-    memset(mc, 0, sizeof(struct mag_conn));
     return APR_SUCCESS;
+}
+
+struct mag_conn *mag_new_conn_ctx(apr_pool_t *pool)
+{
+    struct mag_conn *mc;
+
+    mc = apr_pcalloc(pool, sizeof(struct mag_conn));
+    apr_pool_create(&mc->pool, pool);
+    /* register the context in the memory pool, so it can be freed
+     * when the connection/request is terminated */
+    apr_pool_cleanup_register(mc->pool, (void *)mc,
+                              mag_conn_destroy, apr_pool_cleanup_null);
+
+    return mc;
+}
+
+static void mag_conn_clear(struct mag_conn *mc)
+{
+    (void)mag_conn_destroy(mc);
+    apr_pool_t *temp;
+
+    apr_pool_clear(mc->pool);
+    temp = mc->pool;
+    memset(mc, 0, sizeof(struct mag_conn));
+    mc->pool = temp;
 }
 
 static bool mag_conn_is_https(conn_rec *c)
@@ -422,11 +444,6 @@ static int mag_auth(request_rec *req)
     auth_header = apr_table_get(req->headers_in, "Authorization");
 
     if (mc) {
-        /* register the context in the memory pool, so it can be freed
-         * when the connection/request is terminated */
-        apr_pool_cleanup_register(mc->parent, (void *) mc,
-                                  mag_conn_destroy, apr_pool_cleanup_null);
-
         if (mc->established && !auth_header) {
             ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, req,
                           "Already established context found!");
@@ -456,7 +473,7 @@ static int mag_auth(request_rec *req)
         /* if we are re-authenticating make sure the conn context
          * is cleaned up so we do not accidentally reuse an existing
          * established context */
-        mag_conn_destroy(mc);
+        mag_conn_clear(mc);
     }
 
     switch (auth_type) {
@@ -492,7 +509,7 @@ static int mag_auth(request_rec *req)
                 ret = OK;
                 goto done;
             } else {
-                mag_conn_destroy(mc);
+                mag_conn_clear(mc);
             }
         }
 
@@ -720,8 +737,8 @@ static int mag_auth(request_rec *req)
     }
 
     if (mc) {
-        mc->user_name = apr_pstrdup(mc->parent, req->user);
-        mc->gss_name = apr_pstrdup(mc->parent, clientname);
+        mc->user_name = apr_pstrdup(mc->pool, req->user);
+        mc->gss_name = apr_pstrdup(mc->pool, clientname);
         mc->established = true;
         if (vtime == GSS_C_INDEFINITE || vtime < MIN_SESS_EXP_TIME) {
             vtime = MIN_SESS_EXP_TIME;
