@@ -361,6 +361,8 @@ static bool mag_auth_basic(request_rec *req,
     gss_ctx_id_t server_ctx = GSS_C_NO_CONTEXT;
     gss_buffer_desc input = GSS_C_EMPTY_BUFFER;
     gss_buffer_desc output = GSS_C_EMPTY_BUFFER;
+    gss_OID_set allowed_mechs = GSS_C_NO_OID_SET;
+    gss_OID_set_desc all_mechs_desc;
     uint32_t init_flags = 0;
     uint32_t maj, min;
     bool ret = false;
@@ -393,9 +395,15 @@ static bool mag_auth_basic(request_rec *req,
         goto done;
     }
 
+    if (cfg->allowed_mechs && cfg->allowed_mechs->count > 1) {
+        all_mechs_desc.count = cfg->allowed_mechs->count - 1;
+        all_mechs_desc.elements = &cfg->allowed_mechs->elements[1];
+        allowed_mechs = &all_mechs_desc;
+    }
+
     maj = gss_acquire_cred_with_password(&min, user, &ba_pwd,
                                          GSS_C_INDEFINITE,
-                                         cfg->allowed_mechs,
+                                         allowed_mechs,
                                          GSS_C_INITIATE,
                                          &user_cred, NULL, NULL);
     if (GSS_ERROR(maj)) {
@@ -411,7 +419,7 @@ static bool mag_auth_basic(request_rec *req,
          * name instead of the SPN of the server credentials. Therefore we
          * need to acquire a different set of credential setting
          * GSS_C_ACCEPT explicitly */
-        if (!mag_acquire_creds(req, cfg, cfg->allowed_mechs,
+        if (!mag_acquire_creds(req, cfg, allowed_mechs,
                                GSS_C_ACCEPT, &server_cred, NULL)) {
             goto done;
         }
