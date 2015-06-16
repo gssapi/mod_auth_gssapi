@@ -60,7 +60,7 @@ struct mag_config {
 };
 
 struct mag_conn {
-    apr_pool_t *parent;
+    apr_pool_t *pool;
     gss_ctx_id_t ctx;
     bool established;
     const char *user_name;
@@ -72,3 +72,5 @@ struct mag_conn {
 };
 
 #define discard_const(ptr) ((void *)((uintptr_t)(ptr)))
+
+struct mag_conn *mag_new_conn_ctx(apr_pool_t *pool);
