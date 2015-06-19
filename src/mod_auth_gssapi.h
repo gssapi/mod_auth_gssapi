@@ -55,8 +55,10 @@ struct mag_config {
     gss_key_value_set_desc *cred_store;
 #endif
     struct seal_key *mag_skey;
+
     bool use_basic_auth;
     gss_OID_set_desc *allowed_mechs;
+    gss_OID_set_desc *basic_mechs;
 };
 
 struct mag_conn {

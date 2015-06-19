@@ -336,6 +336,50 @@ static void mag_set_req_data(request_rec *req,
     }
 }
 
+gss_OID_set mag_filter_unwanted_mechs(gss_OID_set src)
+{
+    gss_const_OID unwanted_mechs[] = {
+        &gss_mech_spnego,
+        gss_mech_krb5_old,
+        gss_mech_krb5_wrong,
+        gss_mech_iakerb,
+        GSS_C_NO_OID
+    };
+    gss_OID_set dst;
+    uint32_t maj, min;
+    int present = 0;
+
+    for (int i = 0; unwanted_mechs[i] != GSS_C_NO_OID; i++) {
+        maj = gss_test_oid_set_member(&min,
+                                      discard_const(unwanted_mechs[i]),
+                                      src, &present);
+        if (present) break;
+    }
+    if (present) {
+        maj = gss_create_empty_oid_set(&min, &dst);
+        if (maj != GSS_S_COMPLETE) {
+            return GSS_C_NO_OID_SET;
+        }
+        for (int i = 0; i < src->count; i++) {
+            present = 0;
+            for (int j = 0; unwanted_mechs[j] != GSS_C_NO_OID; j++) {
+                if (gss_oid_equal(&src->elements[i], unwanted_mechs[j])) {
+                    present = 1;
+                    break;
+                }
+            }
+            if (present) continue;
+            maj = gss_add_oid_set_member(&min, &src->elements[i], &dst);
+            if (maj != GSS_S_COMPLETE) {
+                gss_release_oid_set(&min, &dst);
+                return GSS_C_NO_OID_SET;
+            }
+        }
+        return dst;
+    }
+    return src;
+}
+
 static bool mag_auth_basic(request_rec *req,
                            struct mag_config *cfg,
                            gss_buffer_desc ba_user,
@@ -360,7 +404,9 @@ static bool mag_auth_basic(request_rec *req,
     gss_ctx_id_t server_ctx = GSS_C_NO_CONTEXT;
     gss_buffer_desc input = GSS_C_EMPTY_BUFFER;
     gss_buffer_desc output = GSS_C_EMPTY_BUFFER;
-    gss_OID_set allowed_mechs = GSS_C_NO_OID_SET;
+    gss_OID_set indicated_mechs = GSS_C_NO_OID_SET;
+    gss_OID_set allowed_mechs;
+    gss_OID_set filtered_mechs;
     gss_OID_set_desc all_mechs_desc;
     gss_OID_set actual_mechs = GSS_C_NO_OID_SET;
     uint32_t init_flags = 0;
@@ -395,10 +441,56 @@ static bool mag_auth_basic(request_rec *req,
         goto done;
     }
 
-    if (cfg->allowed_mechs && cfg->allowed_mechs->count > 1) {
-        all_mechs_desc.count = cfg->allowed_mechs->count - 1;
-        all_mechs_desc.elements = &cfg->allowed_mechs->elements[1];
-        allowed_mechs = &all_mechs_desc;
+    if (cfg->basic_mechs) {
+        allowed_mechs = cfg->basic_mechs;
+    } else if (cfg->allowed_mechs) {
+        allowed_mechs = cfg->allowed_mechs;
+    } else {
+        /* Try to fetch the default set if not explicitly configured,
+         * We need to do this because gss_acquire_cred_with_password()
+         * is currently limited to acquire creds for a single "default"
+         * mechanism if no desired mechanisms are passed in. This causes
+         * authentication to fail for secondary mechanisms as no user
+         * credentials are generated for those. */
+        maj = gss_indicate_mechs(&min, &indicated_mechs);
+        if (maj != GSS_S_COMPLETE) {
+            ap_log_rerror(APLOG_MARK, APLOG_WARNING, 0, req, "%s",
+                          mag_error(req, "gss_indicate_mechs() failed",
+                                    maj, min));
+            /* if indicated _mechs failed, set GSS_C_NO_OID_SET. This
+             * generally causes only the krb5 mechanism to be tried due
+             * to implementation constraints, but may change in future. */
+            allowed_mechs = GSS_C_NO_OID_SET;
+        } else {
+            allowed_mechs = indicated_mechs;
+        }
+    }
+
+    /* Remove Spnego if present, or we'd repeat failed authentiations
+     * multiple times, one within Spnego and then again with an explicit
+     * mechanism. We would normally just force Spnego and use
+     * gss_set_neg_mechs, but due to the way we source the server name
+     * and the fact MIT up to 1.14 at least does no handle union names,
+     * we can't provide spnego with a server name that can be used by
+     * multiple mechanisms, causing any but the first mechanism to fail.
+     * Also remove unwanted krb mechs, or AS requests will be repeated
+     * multiple times uselessly.
+     */
+    filtered_mechs = mag_filter_unwanted_mechs(allowed_mechs);
+    if (filtered_mechs == GSS_C_NO_OID_SET) {
+        ap_log_rerror(APLOG_MARK, APLOG_WARNING, 0, req, "Fatal "
+                      "failure while filtering mechs, aborting");
+        goto done;
+    } else if (filtered_mechs != allowed_mechs) {
+        /* if indicated_mechs where sourced then free them here before
+         * reusing the pointer */
+        gss_release_oid_set(&min, &indicated_mechs);
+
+        /* mark the list of mechs needs to be freed */
+        indicated_mechs = filtered_mechs;
+
+        /* use the filtered list */
+        allowed_mechs = filtered_mechs;
     }
 
     maj = gss_acquire_cred_with_password(&min, user, &ba_pwd,
@@ -423,8 +515,7 @@ static bool mag_auth_basic(request_rec *req,
 
     for (int i = 0; i < actual_mechs->count; i++) {
 
-        /* skip spnego if present (it is usually present when
-         * cfg->allowed_mechs is not set) */
+        /* skip spnego if present */
         if (gss_oid_equal(&actual_mechs->elements[i],
                           &gss_mech_spnego)) {
             continue;
@@ -438,6 +529,7 @@ static bool mag_auth_basic(request_rec *req,
 
         all_mechs_desc.count = 1;
         all_mechs_desc.elements = &actual_mechs->elements[i];
+        allowed_mechs = &all_mechs_desc;
 
         /* must acquire with GSS_C_ACCEPT to get the server name */
         if (!mag_acquire_creds(req, cfg, allowed_mechs,
@@ -504,6 +596,7 @@ done:
     gss_release_cred(&min, &user_cred);
     gss_delete_sec_context(&min, &user_ctx, GSS_C_NO_BUFFER);
     gss_release_oid_set(&min, &actual_mechs);
+    gss_release_oid_set(&min, &indicated_mechs);
 #ifdef HAVE_GSS_KRB5_CCACHE_NAME
     if (user_ccache != NULL) {
         maj = gss_krb5_ccache_name(&min, orig_ccache, NULL);
@@ -1028,6 +1121,7 @@ static const char *mag_deleg_ccache_dir(cmd_parms *parms, void *mconfig,
 }
 #endif
 
+#ifdef HAVE_GSS_ACQUIRE_CRED_WITH_PASSWORD
 static const char *mag_use_basic_auth(cmd_parms *parms, void *mconfig, int on)
 {
     struct mag_config *cfg = (struct mag_config *)mconfig;
@@ -1035,24 +1129,28 @@ static const char *mag_use_basic_auth(cmd_parms *parms, void *mconfig, int on)
     cfg->use_basic_auth = on ? true : false;
     return NULL;
 }
+#endif
 
 #define MAX_ALLOWED_MECHS 10
 
-static const char *mag_allow_mech(cmd_parms *parms, void *mconfig,
-                                  const char *w)
+static void mag_list_of_mechs(cmd_parms *parms, gss_OID_set *oidset,
+                              bool add_spnego, const char *w)
 {
-    struct mag_config *cfg = (struct mag_config *)mconfig;
     gss_const_OID oid;
+    gss_OID_set set;
     size_t size;
 
-    if (!cfg->allowed_mechs) {
-        cfg->allowed_mechs = apr_pcalloc(parms->pool,
-                                         sizeof(gss_OID_set_desc));
+    if (NULL == *oidset) {
+        set = apr_pcalloc(parms->pool, sizeof(gss_OID_set_desc));
         size = sizeof(gss_OID) * MAX_ALLOWED_MECHS;
-        cfg->allowed_mechs->elements = apr_palloc(parms->pool, size);
-
-        cfg->allowed_mechs->elements[0] = gss_mech_spnego;
-        cfg->allowed_mechs->count++;
+        set->elements = apr_palloc(parms->pool, size);
+        if (add_spnego) {
+            set->elements[0] = gss_mech_spnego;
+            set->count++;
+        }
+        *oidset = set;
+    } else {
+        set = *oidset;
     }
 
     if (strcmp(w, "krb5") == 0) {
@@ -1064,20 +1162,40 @@ static const char *mag_allow_mech(cmd_parms *parms, void *mconfig,
     } else {
         ap_log_error(APLOG_MARK, APLOG_ERR, 0, parms->server,
                      "Unrecognized GSSAPI Mechanism: %s", w);
-        return NULL;
+        return;
     }
 
-    if (cfg->allowed_mechs->count >= MAX_ALLOWED_MECHS) {
+    if (set->count >= MAX_ALLOWED_MECHS) {
         ap_log_error(APLOG_MARK, APLOG_ERR, 0, parms->server,
                      "Too many GssapiAllowedMech options (MAX: %d)",
                      MAX_ALLOWED_MECHS);
-        return NULL;
+        return;
     }
-    cfg->allowed_mechs->elements[cfg->allowed_mechs->count] = *oid;
-    cfg->allowed_mechs->count++;
+    set->elements[set->count] = *oid;
+    set->count++;
+}
+
+static const char *mag_allow_mech(cmd_parms *parms, void *mconfig,
+                                  const char *w)
+{
+    struct mag_config *cfg = (struct mag_config *)mconfig;
+
+    mag_list_of_mechs(parms, &cfg->allowed_mechs, true, w);
 
     return NULL;
 }
+
+#ifdef HAVE_GSS_ACQUIRE_CRED_WITH_PASSWORD
+static const char *mag_basic_auth_mechs(cmd_parms *parms, void *mconfig,
+                                        const char *w)
+{
+    struct mag_config *cfg = (struct mag_config *)mconfig;
+
+    mag_list_of_mechs(parms, &cfg->basic_mechs, false, w);
+
+    return NULL;
+}
+#endif
 
 static const command_rec mag_commands[] = {
     AP_INIT_FLAG("GssapiSSLonly", mag_ssl_only, NULL, OR_AUTHCFG,
@@ -1103,6 +1221,8 @@ static const command_rec mag_commands[] = {
 #ifdef HAVE_GSS_ACQUIRE_CRED_WITH_PASSWORD
     AP_INIT_FLAG("GssapiBasicAuth", mag_use_basic_auth, NULL, OR_AUTHCFG,
                      "Allows use of Basic Auth for authentication"),
+    AP_INIT_ITERATE("GssapiBasicAuthMech", mag_basic_auth_mechs, NULL,
+                    OR_AUTHCFG, "Mechanisms to use for basic auth"),
 #endif
     AP_INIT_ITERATE("GssapiAllowedMech", mag_allow_mech, NULL, OR_AUTHCFG,
                     "Allowed Mechanisms"),

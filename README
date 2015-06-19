@@ -216,3 +216,16 @@ are allowed.  The recognized mechanism names are: krb5, iakerb, ntlmssp
 Example:
     GssapiAllowedMech krb5
     GssapiAllowedMech ntlmssp
+
+
+### GssapiBasicAuthMech
+
+List of mechanisms against which Basic Auth is attempted. This is useful to
+restrict the mechanisms that can be used to attaempt password auth.
+By default no mechanism is set, this means all locally available mechanisms
+are allowed, unless GssapiAllowedMech is set, in which case those are used.
+GssapiBasicAuthMech always takes precendence over GssapiAllowedMech.
+The recognized mechanism names are: krb5, iakerb, ntlmssp
+
+Example:
+    GssapiBasicAuthMech krb5
