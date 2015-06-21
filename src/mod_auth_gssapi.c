@@ -411,26 +411,8 @@ static bool mag_auth_basic(request_rec *req,
     gss_OID_set actual_mechs = GSS_C_NO_OID_SET;
     uint32_t init_flags = 0;
     uint32_t maj, min;
+    int present = 0;
     bool ret = false;
-
-#ifdef HAVE_GSS_KRB5_CCACHE_NAME
-    rs = apr_generate_random_bytes((unsigned char *)(&rndname),
-                                   sizeof(long long unsigned int));
-    if (rs != APR_SUCCESS) {
-        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
-                      "Failed to generate random ccache name");
-        goto done;
-    }
-    user_ccache = apr_psprintf(req->pool, "MEMORY:user_%qu", rndname);
-    maj = gss_krb5_ccache_name(&min, user_ccache, &orig_ccache);
-    if (GSS_ERROR(maj)) {
-        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
-                      "In Basic Auth, %s",
-                      mag_error(req, "gss_krb5_ccache_name() "
-                                "failed", maj, min));
-        goto done;
-    }
-#endif
 
     maj = gss_import_name(&min, &ba_user, GSS_C_NT_USER_NAME, &user);
     if (GSS_ERROR(maj)) {
@@ -492,6 +474,42 @@ static bool mag_auth_basic(request_rec *req,
         /* use the filtered list */
         allowed_mechs = filtered_mechs;
     }
+
+#ifdef HAVE_GSS_KRB5_CCACHE_NAME
+    /* If we are using the krb5 mechanism make sure to set a per thread
+     * memory ccache so that there can't be interferences between threads.
+     * Also make sure we have  new cache so no cached results end up being
+     * used. Some implementations of gss_acquire_cred_with_password() do
+     * not reacquire creds if cached ones are around, failing to check
+     * again for the password. */
+    maj = gss_test_oid_set_member(&min, discard_const(gss_mech_krb5),
+                                  allowed_mechs, &present);
+    if (GSS_ERROR(maj)) {
+        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
+                      "In Basic Auth, %s",
+                      mag_error(req, "gss_test_oid_set_member() failed",
+                                maj, min));
+        goto done;
+    }
+    if (present) {
+        rs = apr_generate_random_bytes((unsigned char *)(&rndname),
+                                       sizeof(long long unsigned int));
+        if (rs != APR_SUCCESS) {
+            ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
+                          "Failed to generate random ccache name");
+            goto done;
+        }
+        user_ccache = apr_psprintf(req->pool, "MEMORY:user_%qu", rndname);
+        maj = gss_krb5_ccache_name(&min, user_ccache, &orig_ccache);
+        if (GSS_ERROR(maj)) {
+            ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
+                          "In Basic Auth, %s",
+                          mag_error(req, "gss_krb5_ccache_name() "
+                                    "failed", maj, min));
+            goto done;
+        }
+    }
+#endif
 
     maj = gss_acquire_cred_with_password(&min, user, &ba_pwd,
                                          GSS_C_INDEFINITE,
