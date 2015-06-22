@@ -1150,48 +1150,77 @@ static const char *mag_use_basic_auth(cmd_parms *parms, void *mconfig, int on)
 }
 #endif
 
-#define MAX_ALLOWED_MECHS 10
+static apr_status_t mag_oid_set_destroy(void *ptr)
+{
+    uint32_t min;
+    gss_OID_set set = (gss_OID_set)ptr;
+    (void)gss_release_oid_set(&min, &set);
+    return APR_SUCCESS;
+}
 
 static void mag_list_of_mechs(cmd_parms *parms, gss_OID_set *oidset,
                               bool add_spnego, const char *w)
 {
-    gss_const_OID oid;
+    gss_buffer_desc buf = { 0 };
+    uint32_t maj, min;
     gss_OID_set set;
-    size_t size;
+    gss_OID oid;
+    bool release_oid = false;
 
     if (NULL == *oidset) {
-        set = apr_pcalloc(parms->pool, sizeof(gss_OID_set_desc));
-        size = sizeof(gss_OID) * MAX_ALLOWED_MECHS;
-        set->elements = apr_palloc(parms->pool, size);
-        if (add_spnego) {
-            set->elements[0] = gss_mech_spnego;
-            set->count++;
+        maj = gss_create_empty_oid_set(&min, &set);
+        if (maj != GSS_S_COMPLETE) {
+            ap_log_error(APLOG_MARK, APLOG_ERR, 0, parms->server,
+                         "gss_create_empty_oid_set() failed.");
+            *oidset = GSS_C_NO_OID_SET;
+            return;
         }
+        if (add_spnego) {
+            oid = discard_const(&gss_mech_spnego);
+            maj = gss_add_oid_set_member(&min, oid, &set);
+            if (maj != GSS_S_COMPLETE) {
+                ap_log_error(APLOG_MARK, APLOG_ERR, 0, parms->server,
+                             "gss_add_oid_set_member() failed.");
+                (void)gss_release_oid_set(&min, &set);
+                *oidset = GSS_C_NO_OID_SET;
+                return;
+            }
+        }
+        /* register in the pool so it can be released once the server
+         * winds down */
+        apr_pool_cleanup_register(parms->pool, (void *)set,
+                                  mag_oid_set_destroy,
+                                  apr_pool_cleanup_null);
         *oidset = set;
     } else {
         set = *oidset;
     }
 
     if (strcmp(w, "krb5") == 0) {
-        oid = gss_mech_krb5;
+        oid = discard_const(gss_mech_krb5);
     } else if (strcmp(w, "iakerb") == 0) {
-        oid = gss_mech_iakerb;
+        oid = discard_const(gss_mech_iakerb);
     } else if (strcmp(w, "ntlmssp") == 0) {
-        oid = &gss_mech_ntlmssp;
+        oid = discard_const(&gss_mech_ntlmssp);
     } else {
-        ap_log_error(APLOG_MARK, APLOG_ERR, 0, parms->server,
-                     "Unrecognized GSSAPI Mechanism: %s", w);
-        return;
+        buf.value = discard_const(w);
+        buf.length = strlen(w);
+        maj = gss_str_to_oid(&min, &buf, &oid);
+        if (maj != GSS_S_COMPLETE) {
+            ap_log_error(APLOG_MARK, APLOG_ERR, 0, parms->server,
+                         "Unrecognized GSSAPI Mechanism: [%s]", w);
+            return;
+        }
+        release_oid = true;
     }
-
-    if (set->count >= MAX_ALLOWED_MECHS) {
+    maj = gss_add_oid_set_member(&min, oid, &set);
+    if (maj != GSS_S_COMPLETE) {
         ap_log_error(APLOG_MARK, APLOG_ERR, 0, parms->server,
-                     "Too many GssapiAllowedMech options (MAX: %d)",
-                     MAX_ALLOWED_MECHS);
-        return;
+                         "gss_add_oid_set_member() failed for [%s].", w);
     }
-    set->elements[set->count] = *oid;
-    set->count++;
+    if (release_oid) {
+        (void)gss_release_oid(&min, &oid);
+    }
 }
 
 static const char *mag_allow_mech(cmd_parms *parms, void *mconfig,
