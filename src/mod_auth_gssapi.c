@@ -526,7 +526,7 @@ static bool mag_auth_basic(request_rec *req,
 
     /* must acquire creds based on the actual mechs we want to try */
     if (!mag_acquire_creds(req, cfg, actual_mechs,
-                           GSS_C_BOTH, &acquired_cred, NULL)) {
+                           cred_usage, &acquired_cred, NULL)) {
         goto done;
     }
 
