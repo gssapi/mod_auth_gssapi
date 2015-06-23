@@ -61,6 +61,10 @@ struct mag_config {
     gss_OID_set_desc *basic_mechs;
 };
 
+struct mag_server_config {
+    gss_OID_set default_mechs;
+};
+
 struct mag_conn {
     apr_pool_t *pool;
     gss_ctx_id_t ctx;

@@ -407,7 +407,6 @@ static bool mag_auth_basic(request_rec *req,
     gss_cred_id_t acquired_cred = GSS_C_NO_CREDENTIAL;
     gss_buffer_desc input = GSS_C_EMPTY_BUFFER;
     gss_buffer_desc output = GSS_C_EMPTY_BUFFER;
-    gss_OID_set indicated_mechs = GSS_C_NO_OID_SET;
     gss_OID_set allowed_mechs;
     gss_OID_set filtered_mechs;
     gss_OID_set actual_mechs = GSS_C_NO_OID_SET;
@@ -430,24 +429,19 @@ static bool mag_auth_basic(request_rec *req,
     } else if (cfg->allowed_mechs) {
         allowed_mechs = cfg->allowed_mechs;
     } else {
+        struct mag_server_config *scfg;
         /* Try to fetch the default set if not explicitly configured,
          * We need to do this because gss_acquire_cred_with_password()
          * is currently limited to acquire creds for a single "default"
          * mechanism if no desired mechanisms are passed in. This causes
          * authentication to fail for secondary mechanisms as no user
          * credentials are generated for those. */
-        maj = gss_indicate_mechs(&min, &indicated_mechs);
-        if (maj != GSS_S_COMPLETE) {
-            ap_log_rerror(APLOG_MARK, APLOG_WARNING, 0, req, "%s",
-                          mag_error(req, "gss_indicate_mechs() failed",
-                                    maj, min));
-            /* if indicated _mechs failed, set GSS_C_NO_OID_SET. This
-             * generally causes only the krb5 mechanism to be tried due
-             * to implementation constraints, but may change in future. */
-            allowed_mechs = GSS_C_NO_OID_SET;
-        } else {
-            allowed_mechs = indicated_mechs;
-        }
+        scfg = ap_get_module_config(req->server->module_config,
+                                    &auth_gssapi_module);
+        /* In the worst case scenario default_mechs equals to GSS_C_NO_OID_SET.
+         * This generally causes only the krb5 mechanism to be tried due
+         * to implementation constraints, but may change in future. */
+        allowed_mechs = scfg->default_mechs;
     }
 
     /* Remove Spnego if present, or we'd repeat failed authentiations
@@ -461,19 +455,14 @@ static bool mag_auth_basic(request_rec *req,
      * multiple times uselessly.
      */
     filtered_mechs = mag_filter_unwanted_mechs(allowed_mechs);
-    if ((allowed_mechs != GSS_C_NO_OID_SET) &&
-        (filtered_mechs == GSS_C_NO_OID_SET)) {
+    if (filtered_mechs == allowed_mechs) {
+        /* in case filtered_mechs was not allocated here don't free it */
+        filtered_mechs = GSS_C_NO_OID_SET;
+    } else if (filtered_mechs == GSS_C_NO_OID_SET) {
         ap_log_rerror(APLOG_MARK, APLOG_WARNING, 0, req, "Fatal "
                       "failure while filtering mechs, aborting");
         goto done;
-    } else if (filtered_mechs != allowed_mechs) {
-        /* if indicated_mechs where sourced then free them here before
-         * reusing the pointer */
-        gss_release_oid_set(&min, &indicated_mechs);
-
-        /* mark the list of mechs needs to be freed */
-        indicated_mechs = filtered_mechs;
-
+    } else {
         /* use the filtered list */
         allowed_mechs = filtered_mechs;
     }
@@ -611,7 +600,7 @@ done:
     gss_release_cred(&min, &user_cred);
     gss_delete_sec_context(&min, &user_ctx, GSS_C_NO_BUFFER);
     gss_release_oid_set(&min, &actual_mechs);
-    gss_release_oid_set(&min, &indicated_mechs);
+    gss_release_oid_set(&min, &filtered_mechs);
 #ifdef HAVE_GSS_KRB5_CCACHE_NAME
     if (user_ccache != NULL) {
         maj = gss_krb5_ccache_name(&min, orig_ccache, NULL);
@@ -653,7 +642,6 @@ static int mag_auth(request_rec *req)
     char *clientname;
     gss_OID mech_type = GSS_C_NO_OID;
     gss_OID_set desired_mechs = GSS_C_NO_OID_SET;
-    gss_OID_set indicated_mechs = GSS_C_NO_OID_SET;
     gss_buffer_desc lname = GSS_C_EMPTY_BUFFER;
     struct mag_conn *mc = NULL;
     time_t expiration;
@@ -669,14 +657,11 @@ static int mag_auth(request_rec *req)
     if (cfg->allowed_mechs) {
         desired_mechs = cfg->allowed_mechs;
     } else {
+        struct mag_server_config *scfg;
         /* Try to fetch the default set if not explicitly configured */
-        maj = gss_indicate_mechs(&min, &indicated_mechs);
-        if (maj != GSS_S_COMPLETE) {
-            ap_log_rerror(APLOG_MARK, APLOG_WARNING, 0, req, "%s",
-                          mag_error(req, "gss_indicate_mechs() failed",
-                                    maj, min));
-        }
-        desired_mechs = indicated_mechs;
+        scfg = ap_get_module_config(req->server->module_config,
+                                    &auth_gssapi_module);
+        desired_mechs = scfg->default_mechs;
     }
 
     /* implicit auth for subrequests if main auth already happened */
@@ -970,7 +955,7 @@ done:
                                        ap_auth_name(req)));
         }
     }
-    gss_release_oid_set(&min, &indicated_mechs);
+
     if (ctx != GSS_C_NO_CONTEXT)
         gss_delete_sec_context(&min, &ctx, GSS_C_NO_BUFFER);
     gss_release_cred(&min, &acquired_cred);
@@ -1246,6 +1231,26 @@ static const char *mag_basic_auth_mechs(cmd_parms *parms, void *mconfig,
 }
 #endif
 
+static void *mag_create_server_config(apr_pool_t *p, server_rec *s)
+{
+    struct mag_server_config *scfg;
+    uint32_t maj, min;
+
+    scfg = apr_pcalloc(p, sizeof(struct mag_server_config));
+
+    maj = gss_indicate_mechs(&min, &scfg->default_mechs);
+    if (maj != GSS_S_COMPLETE) {
+        ap_log_error(APLOG_MARK, APLOG_WARNING, 0, s,
+                     "gss_indicate_mechs() failed");
+    } else {
+        /* Register the set in pool */
+        apr_pool_cleanup_register(p, (void *)scfg->default_mechs,
+                                  mag_oid_set_destroy, apr_pool_cleanup_null);
+    }
+
+    return scfg;
+}
+
 static const command_rec mag_commands[] = {
     AP_INIT_FLAG("GssapiSSLonly", mag_ssl_only, NULL, OR_AUTHCFG,
                   "Work only if connection is SSL Secured"),
@@ -1291,7 +1296,7 @@ module AP_MODULE_DECLARE_DATA auth_gssapi_module =
     STANDARD20_MODULE_STUFF,
     mag_create_dir_config,
     NULL,
-    NULL,
+    mag_create_server_config,
     NULL,
     mag_commands,
     mag_register_hooks
