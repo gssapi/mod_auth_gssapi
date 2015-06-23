@@ -549,12 +549,6 @@ static bool mag_auth_basic(request_rec *req,
 
     for (int i = 0; i < actual_mechs->count; i++) {
 
-        /* skip spnego if present */
-        if (gss_oid_equal(&actual_mechs->elements[i],
-                          &gss_mech_spnego)) {
-            continue;
-        }
-
         /* free these if looping */
         gss_release_buffer(&min, &output);
         gss_release_buffer(&min, &input);
