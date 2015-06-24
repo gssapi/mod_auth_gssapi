@@ -349,6 +349,8 @@ gss_OID_set mag_filter_unwanted_mechs(gss_OID_set src)
     uint32_t maj, min;
     int present = 0;
 
+    if (src == GSS_C_NO_OID_SET) return GSS_C_NO_OID_SET;
+
     for (int i = 0; unwanted_mechs[i] != GSS_C_NO_OID; i++) {
         maj = gss_test_oid_set_member(&min,
                                       discard_const(unwanted_mechs[i]),
@@ -459,7 +461,8 @@ static bool mag_auth_basic(request_rec *req,
      * multiple times uselessly.
      */
     filtered_mechs = mag_filter_unwanted_mechs(allowed_mechs);
-    if (filtered_mechs == GSS_C_NO_OID_SET) {
+    if ((allowed_mechs != GSS_C_NO_OID_SET) &&
+        (filtered_mechs == GSS_C_NO_OID_SET)) {
         ap_log_rerror(APLOG_MARK, APLOG_WARNING, 0, req, "Fatal "
                       "failure while filtering mechs, aborting");
         goto done;
