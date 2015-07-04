@@ -135,7 +135,8 @@ def setup_kdc(testdir, wrapenv):
 
     kdcenv = {'PATH': '/sbin:/bin:/usr/sbin:/usr/bin',
               'KRB5_CONFIG': krb5conf,
-              'KRB5_KDC_PROFILE': kdcconf}
+              'KRB5_KDC_PROFILE': kdcconf,
+              'KRB5_TRACE': os.path.join(testdir, 'krbtrace.log')}
     kdcenv.update(wrapenv)
 
     with (open(testlog, 'a')) as logfile:
@@ -263,6 +264,23 @@ def test_spnego_auth(testdir, testenv, testlog):
             sys.stderr.write('SPNEGO: SUCCESS\n')
 
 
+def test_basic_auth_krb5(testdir, testenv, testlog):
+
+    basicdir = os.path.join(testdir, 'httpd', 'html', 'basic_auth_krb5')
+    os.mkdir(basicdir)
+    shutil.copy('tests/index.html', basicdir)
+
+    with (open(testlog, 'a')) as logfile:
+        basick5 = subprocess.Popen(["tests/t_basic_k5.py"],
+                                   stdout=logfile, stderr=logfile,
+                                   env=testenv, preexec_fn=os.setsid)
+        basick5.wait()
+        if basick5.returncode != 0:
+            sys.stderr.write('BASIC-AUTH: FAILED\n')
+        else:
+            sys.stderr.write('BASIC-AUTH: SUCCESS\n')
+
+
 if __name__ == '__main__':
 
     args = parse_args()
@@ -282,13 +300,19 @@ if __name__ == '__main__':
         kdcproc, kdcenv = setup_kdc(testdir, wrapenv)
         processes['KDC(%d)' % kdcproc.pid] = kdcproc
 
-        httpproc = setup_http(testdir, wrapenv)
+        httpproc = setup_http(testdir, kdcenv)
         processes['HTTPD(%d)' % httpproc.pid] = httpproc
 
         keysenv = setup_keys(testdir, kdcenv)
         testenv = kinit_user(testdir, kdcenv)
 
         test_spnego_auth(testdir, testenv, testlog)
+
+
+        testenv = {'MAG_USER_NAME': USR_NAME,
+                   'MAG_USER_PASSWORD': USR_PWD}
+        testenv.update(kdcenv)
+        test_basic_auth_krb5(testdir, testenv, testlog)
 
     finally:
         with (open(testlog, 'a')) as logfile:
