@@ -292,8 +292,12 @@ static bool parse_auth_header(apr_pool_t *pool, const char **auth_header,
     return true;
 }
 
-static bool is_mech_allowed(gss_OID_set allowed_mechs, gss_const_OID mech)
+static bool is_mech_allowed(gss_OID_set allowed_mechs, gss_const_OID mech, 
+                            bool multi_step_supported)
 {
+    if (!multi_step_supported && gss_oid_equal(&gss_mech_ntlmssp, mech))
+        return false;
+
     if (allowed_mechs == GSS_C_NO_OID_SET) return true;
 
     for (int i = 0; i < allowed_mechs->count; i++) {
@@ -785,7 +789,7 @@ static int mag_auth(request_rec *req)
         break;
 
     case AUTH_TYPE_RAW_NTLM:
-        if (!is_mech_allowed(desired_mechs, &gss_mech_ntlmssp)) {
+        if (!is_mech_allowed(desired_mechs, &gss_mech_ntlmssp, (mc != NULL))) {
             ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, req,
                           "NTLM Authentication is not allowed!");
             goto done;
@@ -945,7 +949,7 @@ done:
         }
     } else if (ret == HTTP_UNAUTHORIZED) {
         apr_table_add(req->err_headers_out, "WWW-Authenticate", "Negotiate");
-        if (is_mech_allowed(desired_mechs, &gss_mech_ntlmssp)) {
+        if (is_mech_allowed(desired_mechs, &gss_mech_ntlmssp, (mc != NULL))) {
             apr_table_add(req->err_headers_out, "WWW-Authenticate", "NTLM");
         }
         if (cfg->use_basic_auth) {
