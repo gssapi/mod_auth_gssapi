@@ -73,8 +73,8 @@ KRB5_CONF_TEMPLATE = '''
   }
 
 [domain_realm]
-  .mag.dev = MAG.DEV
-  mag.dev = MAG.DEV
+  .mag.dev = ${TESTREALM}
+  mag.dev = ${TESTREALM}
 
 [dbmodules]
   ${TESTREALM} = {
@@ -167,6 +167,8 @@ def kadmin_local(cmd, env, logfile):
 
 USR_NAME = "maguser"
 USR_PWD = "magpwd"
+USR_NAME_2 = "maguser2"
+USR_PWD_2 = "magpwd2"
 SVC_KTNAME = "httpd/http.keytab"
 KEY_TYPE = "aes256-cts-hmac-sha1-96:normal"
 
@@ -185,6 +187,10 @@ def setup_keys(tesdir, env):
         kadmin_local(cmd, env, logfile)
 
     cmd = "addprinc -pw %s -e %s %s" % (USR_PWD, KEY_TYPE, USR_NAME)
+    with (open(testlog, 'a')) as logfile:
+        kadmin_local(cmd, env, logfile)
+
+    cmd = "addprinc -pw %s -e %s %s" % (USR_PWD_2, KEY_TYPE, USR_NAME_2)
     with (open(testlog, 'a')) as logfile:
         kadmin_local(cmd, env, logfile)
 
@@ -280,6 +286,16 @@ def test_basic_auth_krb5(testdir, testenv, testlog):
         else:
             sys.stderr.write('BASIC-AUTH: SUCCESS\n')
 
+    with (open(testlog, 'a')) as logfile:
+        basick5 = subprocess.Popen(["tests/t_basic_k5_two_users.py"],
+                                   stdout=logfile, stderr=logfile,
+                                   env=testenv, preexec_fn=os.setsid)
+        basick5.wait()
+        if basick5.returncode != 0:
+            sys.stderr.write('BASIC-AUTH Two Users: FAILED\n')
+        else:
+            sys.stderr.write('BASIC-AUTH Two Users: SUCCESS\n')
+
 
 if __name__ == '__main__':
 
@@ -310,7 +326,9 @@ if __name__ == '__main__':
 
 
         testenv = {'MAG_USER_NAME': USR_NAME,
-                   'MAG_USER_PASSWORD': USR_PWD}
+                   'MAG_USER_PASSWORD': USR_PWD,
+                   'MAG_USER_NAME_2': USR_NAME_2,
+                   'MAG_USER_PASSWORD_2': USR_PWD_2}
         testenv.update(kdcenv)
         test_basic_auth_krb5(testdir, testenv, testlog)
 
