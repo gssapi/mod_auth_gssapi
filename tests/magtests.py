@@ -23,6 +23,8 @@ def parse_args():
 
 WRAP_HOSTNAME = "kdc.mag.dev"
 WRAP_IPADDR = '127.0.0.9'
+WRAP_HTTP_PORT = '80'
+WRAP_PROXY_PORT = '8080'
 
 def setup_wrappers(base):
 
@@ -47,6 +49,7 @@ def setup_wrappers(base):
     wenv = {'LD_PRELOAD': 'libsocket_wrapper.so libnss_wrapper.so',
             'SOCKET_WRAPPER_DIR': wrapdir,
             'SOCKET_WRAPPER_DEFAULT_IFACE': '9',
+            'WRAP_PROXY_PORT': WRAP_PROXY_PORT,
             'NSS_WRAPPER_HOSTNAME': WRAP_HOSTNAME,
             'NSS_WRAPPER_HOSTS': hosts_file}
 
@@ -218,7 +221,8 @@ def setup_http(testdir, wrapenv):
         text = t.substitute({'HTTPROOT': httpdir,
                              'HTTPNAME': WRAP_HOSTNAME,
                              'HTTPADDR': WRAP_IPADDR,
-                             'HTTPPORT': '80'})
+                             'PROXYPORT': WRAP_PROXY_PORT,
+                             'HTTPPORT': WRAP_HTTP_PORT})
     config = os.path.join(httpdir, 'httpd.conf')
     with open(config, 'w+') as f:
         f.write(text)
@@ -295,6 +299,16 @@ def test_basic_auth_krb5(testdir, testenv, testlog):
             sys.stderr.write('BASIC-AUTH Two Users: FAILED\n')
         else:
             sys.stderr.write('BASIC-AUTH Two Users: SUCCESS\n')
+
+    with (open(testlog, 'a')) as logfile:
+        basick5 = subprocess.Popen(["tests/t_basic_proxy.py"],
+                                   stdout=logfile, stderr=logfile,
+                                   env=testenv, preexec_fn=os.setsid)
+        basick5.wait()
+        if basick5.returncode != 0:
+            sys.stderr.write('BASIC Proxy Auth: FAILED\n')
+        else:
+            sys.stderr.write('BASIC Proxy Auth: SUCCESS\n')
 
 
 if __name__ == '__main__':
