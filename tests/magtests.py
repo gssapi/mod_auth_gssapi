@@ -301,6 +301,16 @@ def test_basic_auth_krb5(testdir, testenv, testlog):
             sys.stderr.write('BASIC-AUTH Two Users: SUCCESS\n')
 
     with (open(testlog, 'a')) as logfile:
+        basick5 = subprocess.Popen(["tests/t_basic_k5_fail_second.py"],
+                                   stdout=logfile, stderr=logfile,
+                                   env=testenv, preexec_fn=os.setsid)
+        basick5.wait()
+        if basick5.returncode != 0:
+            sys.stderr.write('BASIC Fail Second User: FAILED\n')
+        else:
+            sys.stderr.write('BASIC Fail Second User: SUCCESS\n')
+
+    with (open(testlog, 'a')) as logfile:
         basick5 = subprocess.Popen(["tests/t_basic_proxy.py"],
                                    stdout=logfile, stderr=logfile,
                                    env=testenv, preexec_fn=os.setsid)
