@@ -292,8 +292,12 @@ static bool parse_auth_header(apr_pool_t *pool, const char **auth_header,
     return true;
 }
 
-static bool is_mech_allowed(gss_OID_set allowed_mechs, gss_const_OID mech)
+static bool is_mech_allowed(gss_OID_set allowed_mechs, gss_const_OID mech, 
+                            bool multi_step_supported)
 {
+    if (!multi_step_supported && gss_oid_equal(&gss_mech_ntlmssp, mech))
+        return false;
+
     if (allowed_mechs == GSS_C_NO_OID_SET) return true;
 
     for (int i = 0; i < allowed_mechs->count; i++) {
@@ -615,11 +619,41 @@ done:
     return ret;
 }
 
+struct mag_req_cfg *mag_init_cfg(request_rec *req)
+{
+    struct mag_req_cfg *req_cfg = apr_pcalloc(req->pool,
+                                              sizeof(struct mag_req_cfg));
+    req_cfg->cfg = ap_get_module_config(req->per_dir_config,
+                                        &auth_gssapi_module);
+
+    if (req_cfg->cfg->allowed_mechs) {
+        req_cfg->desired_mechs = req_cfg->cfg->allowed_mechs;
+    } else {
+        struct mag_server_config *scfg;
+        /* Try to fetch the default set if not explicitly configured */
+        scfg = ap_get_module_config(req->server->module_config,
+                                    &auth_gssapi_module);
+        req_cfg->desired_mechs = scfg->default_mechs;
+    }
+
+    if (req->proxyreq == PROXYREQ_PROXY) {
+        req_cfg->req_proto = "Proxy-Authorization";
+        req_cfg->rep_proto = "Proxy-Authenticate";
+    } else {
+        req_cfg->req_proto = "Authorization";
+        req_cfg->rep_proto = "WWW-Authenticate";
+        req_cfg->use_sessions = req_cfg->cfg->use_sessions;
+        req_cfg->send_persist = req_cfg->cfg->send_persist;
+    }
+
+    return req_cfg;
+}
 
 static int mag_auth(request_rec *req)
 {
     const char *type;
     int auth_type = -1;
+    struct mag_req_cfg *req_cfg;
     struct mag_config *cfg;
     const char *auth_header;
     char *auth_header_type;
@@ -652,17 +686,11 @@ static int mag_auth(request_rec *req)
         return DECLINED;
     }
 
-    cfg = ap_get_module_config(req->per_dir_config, &auth_gssapi_module);
+    req_cfg = mag_init_cfg(req);
 
-    if (cfg->allowed_mechs) {
-        desired_mechs = cfg->allowed_mechs;
-    } else {
-        struct mag_server_config *scfg;
-        /* Try to fetch the default set if not explicitly configured */
-        scfg = ap_get_module_config(req->server->module_config,
-                                    &auth_gssapi_module);
-        desired_mechs = scfg->default_mechs;
-    }
+    cfg = req_cfg->cfg;
+
+    desired_mechs = req_cfg->desired_mechs;
 
     /* implicit auth for subrequests if main auth already happened */
     if (!ap_is_initial_req(req) && req->main != NULL) {
@@ -714,11 +742,11 @@ static int mag_auth(request_rec *req)
     }
 
     /* if available, session always supersedes connection bound data */
-    if (cfg->use_sessions) {
+    if (req_cfg->use_sessions) {
         mag_check_session(req, cfg, &mc);
     }
 
-    auth_header = apr_table_get(req->headers_in, "Authorization");
+    auth_header = apr_table_get(req->headers_in, req_cfg->req_proto);
 
     if (mc) {
         if (mc->established &&
@@ -785,7 +813,7 @@ static int mag_auth(request_rec *req)
         break;
 
     case AUTH_TYPE_RAW_NTLM:
-        if (!is_mech_allowed(desired_mechs, &gss_mech_ntlmssp)) {
+        if (!is_mech_allowed(desired_mechs, &gss_mech_ntlmssp, (mc != NULL))) {
             ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, req,
                           "NTLM Authentication is not allowed!");
             goto done;
@@ -920,18 +948,19 @@ complete:
         if (auth_type == AUTH_TYPE_BASIC) {
             mag_basic_cache(cfg, mc, ba_user, ba_pwd);
         }
-        if (cfg->use_sessions) {
+        if (req_cfg->use_sessions) {
             mag_attempt_session(req, cfg, mc);
         }
     }
 
-    if (cfg->send_persist)
+    if (req_cfg->send_persist)
         apr_table_set(req->headers_out, "Persistent-Auth",
             cfg->gss_conn_ctx ? "true" : "false");
 
     ret = OK;
 
 done:
+
     if ((auth_type != AUTH_TYPE_BASIC) && (output.length != 0)) {
         int prefixlen = strlen(auth_types[auth_type]) + 1;
         replen = apr_base64_encode_len(output.length) + 1;
@@ -940,17 +969,16 @@ done:
             memcpy(reply, auth_types[auth_type], prefixlen - 1);
             reply[prefixlen - 1] = ' ';
             apr_base64_encode(&reply[prefixlen], output.value, output.length);
-            apr_table_add(req->err_headers_out,
-                          "WWW-Authenticate", reply);
+            apr_table_add(req->err_headers_out, req_cfg->rep_proto, reply);
         }
     } else if (ret == HTTP_UNAUTHORIZED) {
-        apr_table_add(req->err_headers_out, "WWW-Authenticate", "Negotiate");
-        if (is_mech_allowed(desired_mechs, &gss_mech_ntlmssp)) {
-            apr_table_add(req->err_headers_out, "WWW-Authenticate", "NTLM");
+        apr_table_add(req->err_headers_out, req_cfg->rep_proto, "Negotiate");
+
+        if (is_mech_allowed(desired_mechs, &gss_mech_ntlmssp, (mc != NULL))) {
+            apr_table_add(req->err_headers_out, req_cfg->rep_proto, "NTLM");
         }
         if (cfg->use_basic_auth) {
-            apr_table_add(req->err_headers_out,
-                          "WWW-Authenticate",
+            apr_table_add(req->err_headers_out, req_cfg->rep_proto,
                           apr_psprintf(req->pool, "Basic realm=\"%s\"",
                                        ap_auth_name(req)));
         }

@@ -11,6 +11,7 @@ from string import Template
 import subprocess
 import sys
 import time
+import shlex
 
 
 def parse_args():
@@ -23,6 +24,8 @@ def parse_args():
 
 WRAP_HOSTNAME = "kdc.mag.dev"
 WRAP_IPADDR = '127.0.0.9'
+WRAP_HTTP_PORT = '80'
+WRAP_PROXY_PORT = '8080'
 
 def setup_wrappers(base):
 
@@ -47,6 +50,7 @@ def setup_wrappers(base):
     wenv = {'LD_PRELOAD': 'libsocket_wrapper.so libnss_wrapper.so',
             'SOCKET_WRAPPER_DIR': wrapdir,
             'SOCKET_WRAPPER_DEFAULT_IFACE': '9',
+            'WRAP_PROXY_PORT': WRAP_PROXY_PORT,
             'NSS_WRAPPER_HOSTNAME': WRAP_HOSTNAME,
             'NSS_WRAPPER_HOSTS': hosts_file}
 
@@ -73,8 +77,8 @@ KRB5_CONF_TEMPLATE = '''
   }
 
 [domain_realm]
-  .mag.dev = MAG.DEV
-  mag.dev = MAG.DEV
+  .mag.dev = ${TESTREALM}
+  mag.dev = ${TESTREALM}
 
 [dbmodules]
   ${TESTREALM} = {
@@ -167,6 +171,8 @@ def kadmin_local(cmd, env, logfile):
 
 USR_NAME = "maguser"
 USR_PWD = "magpwd"
+USR_NAME_2 = "maguser2"
+USR_PWD_2 = "magpwd2"
 SVC_KTNAME = "httpd/http.keytab"
 KEY_TYPE = "aes256-cts-hmac-sha1-96:normal"
 
@@ -185,6 +191,10 @@ def setup_keys(tesdir, env):
         kadmin_local(cmd, env, logfile)
 
     cmd = "addprinc -pw %s -e %s %s" % (USR_PWD, KEY_TYPE, USR_NAME)
+    with (open(testlog, 'a')) as logfile:
+        kadmin_local(cmd, env, logfile)
+
+    cmd = "addprinc -pw %s -e %s %s" % (USR_PWD_2, KEY_TYPE, USR_NAME_2)
     with (open(testlog, 'a')) as logfile:
         kadmin_local(cmd, env, logfile)
 
@@ -212,7 +222,8 @@ def setup_http(testdir, wrapenv):
         text = t.substitute({'HTTPROOT': httpdir,
                              'HTTPNAME': WRAP_HOSTNAME,
                              'HTTPADDR': WRAP_IPADDR,
-                             'HTTPPORT': '80'})
+                             'PROXYPORT': WRAP_PROXY_PORT,
+                             'HTTPPORT': WRAP_HTTP_PORT})
     config = os.path.join(httpdir, 'httpd.conf')
     with open(config, 'w+') as f:
         f.write(text)
@@ -263,6 +274,20 @@ def test_spnego_auth(testdir, testenv, testlog):
         else:
             sys.stderr.write('SPNEGO: SUCCESS\n')
 
+    curl = "curl -vf http://%s:%s@%s/spnego/ -x http://%s:%s -U: --proxy-negotiate" % (
+               USR_NAME, USR_PWD, WRAP_HOSTNAME, WRAP_HOSTNAME, WRAP_PROXY_PORT)
+    curl = shlex.split(curl)
+
+    with (open(testlog, 'a')) as logfile:
+        spnego = subprocess.Popen(curl,
+                                  stdout=logfile, stderr=logfile,
+                                  env=testenv, preexec_fn=os.setsid)
+        spnego.wait()
+        if spnego.returncode != 0:
+            sys.stderr.write('SPNEGO Proxy Auth: FAILED\n')
+        else:
+            sys.stderr.write('SPNEGO Proxy Auth: SUCCESS\n')
+
 
 def test_basic_auth_krb5(testdir, testenv, testlog):
 
@@ -279,6 +304,36 @@ def test_basic_auth_krb5(testdir, testenv, testlog):
             sys.stderr.write('BASIC-AUTH: FAILED\n')
         else:
             sys.stderr.write('BASIC-AUTH: SUCCESS\n')
+
+    with (open(testlog, 'a')) as logfile:
+        basick5 = subprocess.Popen(["tests/t_basic_k5_two_users.py"],
+                                   stdout=logfile, stderr=logfile,
+                                   env=testenv, preexec_fn=os.setsid)
+        basick5.wait()
+        if basick5.returncode != 0:
+            sys.stderr.write('BASIC-AUTH Two Users: FAILED\n')
+        else:
+            sys.stderr.write('BASIC-AUTH Two Users: SUCCESS\n')
+
+    with (open(testlog, 'a')) as logfile:
+        basick5 = subprocess.Popen(["tests/t_basic_k5_fail_second.py"],
+                                   stdout=logfile, stderr=logfile,
+                                   env=testenv, preexec_fn=os.setsid)
+        basick5.wait()
+        if basick5.returncode != 0:
+            sys.stderr.write('BASIC Fail Second User: FAILED\n')
+        else:
+            sys.stderr.write('BASIC Fail Secnond User: SUCCESS\n')
+
+    with (open(testlog, 'a')) as logfile:
+        basick5 = subprocess.Popen(["tests/t_basic_proxy.py"],
+                                   stdout=logfile, stderr=logfile,
+                                   env=testenv, preexec_fn=os.setsid)
+        basick5.wait()
+        if basick5.returncode != 0:
+            sys.stderr.write('BASIC Proxy Auth: FAILED\n')
+        else:
+            sys.stderr.write('BASIC Proxy Auth: SUCCESS\n')
 
 
 if __name__ == '__main__':
@@ -310,7 +365,9 @@ if __name__ == '__main__':
 
 
         testenv = {'MAG_USER_NAME': USR_NAME,
-                   'MAG_USER_PASSWORD': USR_PWD}
+                   'MAG_USER_PASSWORD': USR_PWD,
+                   'MAG_USER_NAME_2': USR_NAME_2,
+                   'MAG_USER_PASSWORD_2': USR_PWD_2}
         testenv.update(kdcenv)
         test_basic_auth_krb5(testdir, testenv, testlog)
 
