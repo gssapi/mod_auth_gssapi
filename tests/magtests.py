@@ -11,6 +11,7 @@ from string import Template
 import subprocess
 import sys
 import time
+import shlex
 
 
 def parse_args():
@@ -272,6 +273,20 @@ def test_spnego_auth(testdir, testenv, testlog):
             sys.stderr.write('SPNEGO: FAILED\n')
         else:
             sys.stderr.write('SPNEGO: SUCCESS\n')
+
+    curl = "curl -vf http://%s:%s@%s/spnego/ -x http://%s:%s -U: --proxy-negotiate" % (
+               USR_NAME, USR_PWD, WRAP_HOSTNAME, WRAP_HOSTNAME, WRAP_PROXY_PORT)
+    curl = shlex.split(curl)
+
+    with (open(testlog, 'a')) as logfile:
+        spnego = subprocess.Popen(curl,
+                                  stdout=logfile, stderr=logfile,
+                                  env=testenv, preexec_fn=os.setsid)
+        spnego.wait()
+        if spnego.returncode != 0:
+            sys.stderr.write('SPNEGO Proxy Auth: FAILED\n')
+        else:
+            sys.stderr.write('SPNEGO Proxy Auth: SUCCESS\n')
 
 
 def test_basic_auth_krb5(testdir, testenv, testlog):
