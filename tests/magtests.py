@@ -273,6 +273,16 @@ def test_spnego_auth(testdir, testenv, testlog):
         else:
             sys.stderr.write('SPNEGO: SUCCESS\n')
 
+    with (open(testlog, 'a')) as logfile:
+        spnego = subprocess.Popen(["tests/t_spnego_proxy.py"],
+                                  stdout=logfile, stderr=logfile,
+                                  env=testenv, preexec_fn=os.setsid)
+        spnego.wait()
+        if spnego.returncode != 0:
+            sys.stderr.write('SPNEGO Proxy Auth: FAILED\n')
+        else:
+            sys.stderr.write('SPNEGO Proxy Auth: SUCCESS\n')
+
 
 def test_basic_auth_krb5(testdir, testenv, testlog):
 
