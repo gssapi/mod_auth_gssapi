@@ -7,9 +7,12 @@ import gssapi
 from base64 import b64encode
 
 def getAuthToken(target):
+    spnego_mech = gssapi.raw.OID.from_int_seq('1.3.6.1.5.5.2')
+
     name = gssapi.Name('HTTP@%s' % target,
                        gssapi.NameType.hostbased_service)
-    ctx = gssapi.SecurityContext(name=name)
+
+    ctx = gssapi.SecurityContext(name=name, mech=spnego_mech)
     token = ctx.step()
     
     return 'Negotiate %s' % b64encode(token)
