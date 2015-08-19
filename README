@@ -5,7 +5,7 @@ Intro
 -----
 
 This module has been built as a replacement for the aging mod_auth_kerb.
-It's aim is to use only GSSAPI calls and be as much as possible agnostic
+Its aim is to use only GSSAPI calls and be as much as possible agnostic
 of the actual mechanism used.
 
 Dependencies
@@ -17,15 +17,15 @@ extension](http://k5wiki.kerberos.org/wiki/Projects/Credential_Store_extensions)
 is necessary to achieve full functionality. Reduced functionality is
 provided without these extensions.
 
-krb5 (>=1.11)
-Apache (>=2.4)
+    krb5 (>=1.11)
+    Apache (>=2.4)
 
 Installation
 ------------
 
-./configure
-make
-make install
+    ./configure
+    make
+    make install
 
 
 Configuration
@@ -41,12 +41,12 @@ The simplest configuration scheme specifies just one directive, which is the
 location of the keytab.
 
 #### Example
-<Location /private>
-    AuthType GSSAPI
-    AuthName "GSSAPI Single Sign On Login"
-    GssapiCredStore keytab:/etc/httpd.keytab
-    Require valid-user
-</Location>
+    <Location /private>
+        AuthType GSSAPI
+        AuthName "GSSAPI Single Sign On Login"
+        GssapiCredStore keytab:/etc/httpd.keytab
+        Require valid-user
+    </Location>
 
 Your Apache server need read access to the keytab configured.
 If your Kerberos implementation does not support the credential store
@@ -62,7 +62,7 @@ Configuration Directives
 Forces the authentication attempt to fail if the connection is not being
 established over TLS
 
-Example:
+#### Example
     GssapiSSLonly On
 
 
@@ -78,7 +78,7 @@ When this options is used the resolved name is set in the REMOTE_USER variable
 however the complete client principal name is also made available in the
 GSS_NAME variable.
 
-Example:
+#### Example
     GssapiLocalName on
 
 
@@ -90,7 +90,7 @@ the connection in order to keep the state between round-trips. With this option
 enable incomplete context are store in the connection and retrieved on the next
 request for continuation.
 
-Example:
+#### Example
     GssapiConnectionBound On
 
 
@@ -98,7 +98,7 @@ Example:
 For clients that make use of Persistent-Auth header, send the header according
 to GssapiConnectionBound setting.
 
-Example:
+#### Example
     GssapiSignalPersistentAuth On
 
 
@@ -116,7 +116,7 @@ See the
 [mod_sessions](http://httpd.apache.org/docs/current/mod/mod_session.html)
 documentation for more information.
 
-Example:
+#### Example
     GssapiUseSessions On
     Session On
     SessionCookieName gssapi_session path=/private;httponly;secure;
@@ -126,7 +126,7 @@ Example:
 
 When GssapiUseSessions is enabled a key use to encrypt and MAC the session
 data will be automatically generated at startup, this means session data will
-become unreadable if the server is restarted or multiple serves are used and
+become unreadable if the server is restarted or multiple servers are used and
 the client is load balanced from one to another. To obviate this problem the
 admin can choose to install a permanent key in the configuration so that
 session data remain accessible after a restart or by multiple servers
@@ -134,7 +134,7 @@ sharing the same key.
 
 The key must be a base64 encoded raw key of 32 bytes of length.
 
-Example:
+#### Example
     GssapiSessionKey key:VGhpcyBpcyBhIDMyIGJ5dGUgbG9uZyBzZWNyZXQhISE=
 
 
@@ -143,7 +143,7 @@ Example:
 The GssapiCredStore option allows to specify multiple credential related
 options like keytab location, client_keytab location, ccache location etc.
 
-Example:
+#### Example
     GssapiCredStore keytab:/etc/httpd.keytab
     GssapiCredStore ccache:FILE:/var/run/httpd/krb5ccache
 
@@ -156,12 +156,12 @@ The delegated credentials will be stored in a file named after the client
 principal and the subprocess environment variable KRB5CCNAME will be set
 to point to that file.
 
-Example:
+#### Example
     GssapiDelegCcacheDir /var/run/httpd/clientcaches
-
 
 A user foo@EXAMPLE.COM delegating its credentials would cause the server to
 create a ccache file named /var/run/httpd/clientcaches/foo@EXAMPLE.COM
+
 
 ### GssapiUseS4U2Proxy
 
@@ -174,14 +174,14 @@ This options requires GssapiDelegCcacheDir to be set. The ccache will be
 populated with the user's provided ticket which is later used as evidence
 ticket by the application.
 
-Example:
+#### Example
     GssapiUseS4U2Proxy On
     GssapiCredStore keytab:/etc/httpd.keytab
     GssapiCredStore client_keytab:/etc/httpd.keytab
     GssapiCredStore ccache:FILE:/var/run/httpd/krb5ccache
     GssapiDelegCcacheDir /var/run/httpd/clientcaches
 
-NOTE: The client keytab is necessary to allow GSSAPI to initate via keytab
+**NOTE:** The client keytab is necessary to allow GSSAPI to initiate via keytab
 on its own. If not present an external mechanism needs to kinit with the
 keytab and store a ccache in the configured ccache file.
 
@@ -191,19 +191,19 @@ Allows the use of Basic Auth in conjunction with Negotiate.
 If the browser fails to use Negotiate is will instead fallback to Basic and
 the username and password will be used to try to acquire credentials in the
 module via GSSAPI. If credentials are acquire successfully then they are
-validated agaist the server's keytab.
+validated against the server's keytab.
 
-Enable with: GssapiBasicAuth On
-Default: GssapiBasicAuth Off
+- **Enable with:** GssapiBasicAuth On
+- **Default:** GssapiBasicAuth Off
 
-Example:
-<Location /gssapi>
-  AuthType GSSAPI
-  AuthName "Login"
-  GssapiBasicAuth On
-  GssapiCredStore keytab:/etc/httpd/http.keytab
-  Require valid-user
-</Location>
+#### Example
+    <Location /gssapi>
+      AuthType GSSAPI
+      AuthName "Login"
+      GssapiBasicAuth On
+      GssapiCredStore keytab:/etc/httpd/http.keytab
+      Require valid-user
+    </Location>
 
 
 ### GssapiAllowedMech
@@ -213,7 +213,7 @@ can be used when credentials for multiple mechanisms are available.
 By default no mechanism is set, this means all locally available mechanisms
 are allowed.  The recognized mechanism names are: krb5, iakerb, ntlmssp
 
-Example:
+#### Example
     GssapiAllowedMech krb5
     GssapiAllowedMech ntlmssp
 
@@ -221,11 +221,11 @@ Example:
 ### GssapiBasicAuthMech
 
 List of mechanisms against which Basic Auth is attempted. This is useful to
-restrict the mechanisms that can be used to attaempt password auth.
+restrict the mechanisms that can be used to attempt password auth.
 By default no mechanism is set, this means all locally available mechanisms
 are allowed, unless GssapiAllowedMech is set, in which case those are used.
-GssapiBasicAuthMech always takes precendence over GssapiAllowedMech.
+GssapiBasicAuthMech always takes precedence over GssapiAllowedMech.
 The recognized mechanism names are: krb5, iakerb, ntlmssp
 
-Example:
+#### Example
     GssapiBasicAuthMech krb5
