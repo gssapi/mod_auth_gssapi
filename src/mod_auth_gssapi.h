@@ -63,15 +63,18 @@ struct mag_config {
 
 struct mag_server_config {
     gss_OID_set default_mechs;
+    struct seal_key *mag_skey;
 };
 
 struct mag_req_cfg {
+    request_rec *req;
     struct mag_config *cfg;
     gss_OID_set desired_mechs;
     bool use_sessions;
     bool send_persist;
     const char *req_proto;
     const char *rep_proto;
+    struct seal_key *mag_skey;
 };
 
 struct mag_conn {

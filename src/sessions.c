@@ -86,9 +86,9 @@ static GSSSessionData_t *decode_GSSSessionData(void *buf, size_t len)
 
 #define MAG_BEARER_KEY "MagBearerToken"
 
-void mag_check_session(request_rec *req,
-                       struct mag_config *cfg, struct mag_conn **conn)
+void mag_check_session(struct mag_req_cfg *cfg, struct mag_conn **conn)
 {
+    request_rec *req = cfg->req;
     struct mag_conn *mc;
     apr_status_t rc;
     session_rec *sess = NULL;
@@ -184,9 +184,9 @@ done:
     ASN_STRUCT_FREE(asn_DEF_GSSSessionData, gsessdata);
 }
 
-void mag_attempt_session(request_rec *req,
-                         struct mag_config *cfg, struct mag_conn *mc)
+void mag_attempt_session(struct mag_req_cfg *cfg, struct mag_conn *mc)
 {
+    request_rec *req = cfg->req;
     session_rec *sess = NULL;
     struct databuf plainbuf = { 0 };
     struct databuf cipherbuf = { 0 };
@@ -207,13 +207,8 @@ void mag_attempt_session(request_rec *req,
 
     if (!cfg->mag_skey) {
         ap_log_rerror(APLOG_MARK, APLOG_INFO, 0, req,
-                      "Session key not available, generating new one.");
-        rc = SEAL_KEY_CREATE(cfg->pool, &cfg->mag_skey, NULL);
-        if (rc != OK) {
-            ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, req,
-                          "Failed to create sealing key!");
-            return;
-        }
+                      "Session key not available, aborting.");
+        return;
     }
 
     gsessdata.established = mc->established?1:0;
@@ -275,25 +270,18 @@ static int mag_basic_hmac(struct seal_key *key, unsigned char *mac,
     return HMAC_BUFFER(key, &databuf, &hmacbuf);
 }
 
-static int mag_get_mac_size(struct mag_config *cfg)
+static int mag_get_mac_size(struct mag_req_cfg *cfg)
 {
-    apr_status_t rc;
-
     if (!cfg->mag_skey) {
-        ap_log_perror(APLOG_MARK, APLOG_INFO, 0, cfg->pool,
-                      "Session key not available, generating new one.");
-        rc = SEAL_KEY_CREATE(cfg->pool, &cfg->mag_skey, NULL);
-        if (rc != OK) {
-            ap_log_perror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, cfg->pool,
-                          "Failed to create sealing key!");
-            return 0;
-        }
+        ap_log_perror(APLOG_MARK, APLOG_INFO, 0, cfg->cfg->pool,
+                      "Session key not available, aborting!");
+        return 0;
     }
 
     return get_mac_size(cfg->mag_skey);
 }
 
-bool mag_basic_check(struct mag_config *cfg, struct mag_conn *mc,
+bool mag_basic_check(struct mag_req_cfg *cfg, struct mag_conn *mc,
                      gss_buffer_desc user, gss_buffer_desc pwd)
 {
     int mac_size = mag_get_mac_size(cfg);
@@ -320,7 +308,7 @@ done:
     return res;
 }
 
-void mag_basic_cache(struct mag_config *cfg, struct mag_conn *mc,
+void mag_basic_cache(struct mag_req_cfg *cfg, struct mag_conn *mc,
                      gss_buffer_desc user, gss_buffer_desc pwd)
 {
     int mac_size = mag_get_mac_size(cfg);

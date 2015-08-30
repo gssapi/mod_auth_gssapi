@@ -621,19 +621,28 @@ done:
 
 struct mag_req_cfg *mag_init_cfg(request_rec *req)
 {
+    struct mag_server_config *scfg;
     struct mag_req_cfg *req_cfg = apr_pcalloc(req->pool,
                                               sizeof(struct mag_req_cfg));
+    req_cfg->req = req;
     req_cfg->cfg = ap_get_module_config(req->per_dir_config,
                                         &auth_gssapi_module);
+
+    scfg = ap_get_module_config(req->server->module_config,
+                                &auth_gssapi_module);
 
     if (req_cfg->cfg->allowed_mechs) {
         req_cfg->desired_mechs = req_cfg->cfg->allowed_mechs;
     } else {
-        struct mag_server_config *scfg;
-        /* Try to fetch the default set if not explicitly configured */
-        scfg = ap_get_module_config(req->server->module_config,
-                                    &auth_gssapi_module);
+        /* Use the default set if not explicitly configured */
         req_cfg->desired_mechs = scfg->default_mechs;
+    }
+
+    if (!req_cfg->cfg->mag_skey) {
+        req_cfg->mag_skey = req_cfg->cfg->mag_skey;
+    } else {
+        /* Use server random key if not explicitly configured */
+        req_cfg->mag_skey = scfg->mag_skey;
     }
 
     if (req->proxyreq == PROXYREQ_PROXY) {
@@ -743,7 +752,7 @@ static int mag_auth(request_rec *req)
 
     /* if available, session always supersedes connection bound data */
     if (req_cfg->use_sessions) {
-        mag_check_session(req, cfg, &mc);
+        mag_check_session(req_cfg, &mc);
     }
 
     auth_header = apr_table_get(req->headers_in, req_cfg->req_proto);
@@ -802,7 +811,7 @@ static int mag_auth(request_rec *req)
         ba_pwd.length = strlen(ba_pwd.value);
 
         if (mc && mc->established &&
-            mag_basic_check(cfg, mc, ba_user, ba_pwd)) {
+            mag_basic_check(req_cfg, mc, ba_user, ba_pwd)) {
             ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, req,
                           "Already established BASIC AUTH context found!");
             mag_set_req_data(req, cfg, mc);
@@ -947,10 +956,10 @@ complete:
         mc->expiration = expiration;
         mc->auth_type = auth_type;
         if (auth_type == AUTH_TYPE_BASIC) {
-            mag_basic_cache(cfg, mc, ba_user, ba_pwd);
+            mag_basic_cache(req_cfg, mc, ba_user, ba_pwd);
         }
         if (req_cfg->use_sessions) {
-            mag_attempt_session(req, cfg, mc);
+            mag_attempt_session(req_cfg, mc);
         }
     }
 
@@ -1265,6 +1274,7 @@ static void *mag_create_server_config(apr_pool_t *p, server_rec *s)
 {
     struct mag_server_config *scfg;
     uint32_t maj, min;
+    apr_status_t rc;
 
     scfg = apr_pcalloc(p, sizeof(struct mag_server_config));
 
@@ -1276,6 +1286,12 @@ static void *mag_create_server_config(apr_pool_t *p, server_rec *s)
         /* Register the set in pool */
         apr_pool_cleanup_register(p, (void *)scfg->default_mechs,
                                   mag_oid_set_destroy, apr_pool_cleanup_null);
+    }
+
+    rc = SEAL_KEY_CREATE(p, &scfg->mag_skey, NULL);
+    if (rc != OK) {
+        ap_log_error(APLOG_MARK, APLOG_ERR, 0, s,
+                     "Failed to generate random sealing key!");
     }
 
     return scfg;
