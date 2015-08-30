@@ -72,11 +72,7 @@ apr_status_t SEAL_KEY_CREATE(apr_pool_t *p, struct seal_key **skey,
 
     ret = 0;
 done:
-    if (ret) {
-        free(n->ekey);
-        free(n->hkey);
-        free(n);
-    } else {
+    if (ret == 0) {
         *skey = n;
     }
     return ret;
