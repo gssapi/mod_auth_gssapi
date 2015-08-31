@@ -658,6 +658,19 @@ struct mag_req_cfg *mag_init_cfg(request_rec *req)
     return req_cfg;
 }
 
+static bool use_s4u2proxy(struct mag_req_cfg *req_cfg) {
+    if (req_cfg->cfg->use_s4u2proxy) {
+        if (req_cfg->cfg->deleg_ccache_dir != NULL) {
+            return true;
+        } else {
+            ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req_cfg->req,
+                          "S4U2 Proxy requested but GssapiDelegCcacheDir "
+                          "is not set. Constrained delegation disabled!");
+        }
+    }
+    return false;
+}
+
 static int mag_auth(request_rec *req)
 {
     const char *type;
@@ -850,7 +863,7 @@ static int mag_auth(request_rec *req)
     req->ap_auth_type = apr_pstrdup(req->pool, auth_types[auth_type]);
 
 #ifdef HAVE_CRED_STORE
-    if (cfg->use_s4u2proxy) {
+    if (use_s4u2proxy(req_cfg)) {
         cred_usage = GSS_C_BOTH;
     }
 #endif
@@ -1058,9 +1071,6 @@ static const char *mag_use_s4u2p(cmd_parms *parms, void *mconfig, int on)
     struct mag_config *cfg = (struct mag_config *)mconfig;
     cfg->use_s4u2proxy = on ? true : false;
 
-    if (cfg->deleg_ccache_dir == NULL) {
-        cfg->deleg_ccache_dir = apr_pstrdup(parms->pool, "/tmp");
-    }
     return NULL;
 }
 #endif
