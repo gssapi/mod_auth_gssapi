@@ -6,7 +6,9 @@
 #include <gssapi/gssapi.h>
 #include <gssapi/gssapi_ext.h>
 #include <gssapi/gssapi_krb5.h>
-#include <gssapi/gssapi_ntlmssp.h>
+#ifdef HAVE_GSSAPI_GSSAPI_NTLMSSP_H
+#  include <gssapi/gssapi_ntlmssp.h>
+#endif
 
 #define APR_WANT_STRFUNC
 #include "apr_want.h"

@@ -55,6 +55,7 @@ AC_SUBST([OPENSSL_LIBS])
 
 AC_CHECK_HEADERS([gssapi/gssapi.h gssapi/gssapi_ext.h gssapi/gssapi_krb5.h],
                  ,[AC_MSG_ERROR([Could not find GSSAPI headers])])
+AC_CHECK_HEADERS([gssapi/gssapi_ntlmssp.h])
 AC_PATH_PROG(KRB5_CONFIG, krb5-config, failed)
 if test x$KRB5_CONFIG = xfailed; then
     AC_MSG_ERROR([Could not find GSSAPI development libraries])
