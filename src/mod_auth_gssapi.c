@@ -28,13 +28,21 @@ const gss_OID_desc gss_mech_spnego = {
     6, "\x2b\x06\x01\x05\x05\x02"
 };
 
-const gss_OID_desc gss_mech_ntlmssp = {
+#ifdef HAVE_GSSAPI_GSSAPI_NTLMSSP_H
+const gss_OID_desc gss_mech_ntlmssp_desc = {
     GSS_NTLMSSP_OID_LENGTH, GSS_NTLMSSP_OID_STRING
 };
+gss_const_OID gss_mech_ntlmssp = &gss_mech_ntlmssp_desc;
 
-const gss_OID_set_desc gss_mech_set_ntlmssp = {
-    1, discard_const(&gss_mech_ntlmssp)
+const gss_OID_set_desc gss_mech_set_ntlmssp_desc = {
+    1, discard_const(&gss_mech_ntlmssp_desc)
 };
+gss_const_OID_set gss_mech_set_ntlmssp = &gss_mech_set_ntlmssp_desc;
+
+#else
+gss_OID gss_mech_ntlmssp = GSS_C_NO_OID;
+gss_OID_set gss_mech_set_ntlmssp = GSS_C_NO_OID_SET;
+#endif
 
 #define MOD_AUTH_GSSAPI_VERSION PACKAGE_NAME "/" PACKAGE_VERSION
 
@@ -292,10 +300,12 @@ static bool parse_auth_header(apr_pool_t *pool, const char **auth_header,
     return true;
 }
 
-static bool is_mech_allowed(gss_OID_set allowed_mechs, gss_const_OID mech, 
+static bool is_mech_allowed(gss_OID_set allowed_mechs, gss_const_OID mech,
                             bool multi_step_supported)
 {
-    if (!multi_step_supported && gss_oid_equal(&gss_mech_ntlmssp, mech))
+    if (mech == GSS_C_NO_OID) return false;
+
+    if (!multi_step_supported && gss_oid_equal(gss_mech_ntlmssp, mech))
         return false;
 
     if (allowed_mechs == GSS_C_NO_OID_SET) return true;
@@ -814,6 +824,7 @@ static int mag_auth(request_rec *req)
         ba_user.value = ap_getword_nulls_nc(req->pool,
                                             (char **)&ba_pwd.value, ':');
         if (!ba_user.value) goto done;
+
         if (((char *)ba_user.value)[0] == '\0' ||
             ((char *)ba_pwd.value)[0] == '\0') {
             ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
@@ -835,7 +846,7 @@ static int mag_auth(request_rec *req)
         break;
 
     case AUTH_TYPE_RAW_NTLM:
-        if (!is_mech_allowed(desired_mechs, &gss_mech_ntlmssp,
+        if (!is_mech_allowed(desired_mechs, gss_mech_ntlmssp,
                              cfg->gss_conn_ctx)) {
             ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, req,
                           "NTLM Authentication is not allowed!");
@@ -846,7 +857,7 @@ static int mag_auth(request_rec *req)
             goto done;
         }
 
-        desired_mechs = discard_const(&gss_mech_set_ntlmssp);
+        desired_mechs = discard_const(gss_mech_set_ntlmssp);
         break;
 
     default:
@@ -997,7 +1008,7 @@ done:
     } else if (ret == HTTP_UNAUTHORIZED) {
         apr_table_add(req->err_headers_out, req_cfg->rep_proto, "Negotiate");
 
-        if (is_mech_allowed(desired_mechs, &gss_mech_ntlmssp,
+        if (is_mech_allowed(desired_mechs, gss_mech_ntlmssp,
                             cfg->gss_conn_ctx)) {
             apr_table_add(req->err_headers_out, req_cfg->rep_proto, "NTLM");
         }
@@ -1232,7 +1243,7 @@ static bool mag_list_of_mechs(cmd_parms *parms, gss_OID_set *oidset,
     } else if (strcmp(w, "iakerb") == 0) {
         oid = discard_const(gss_mech_iakerb);
     } else if (strcmp(w, "ntlmssp") == 0) {
-        oid = discard_const(&gss_mech_ntlmssp);
+        oid = discard_const(gss_mech_ntlmssp);
     } else {
         buf.value = discard_const(w);
         buf.length = strlen(w);
