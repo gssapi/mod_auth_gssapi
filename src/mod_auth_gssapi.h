@@ -3,10 +3,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <time.h>
-#include <gssapi/gssapi.h>
-#include <gssapi/gssapi_ext.h>
-#include <gssapi/gssapi_krb5.h>
-#include <gssapi/gssapi_ntlmssp.h>
 
 #define APR_WANT_STRFUNC
 #include "apr_want.h"
@@ -30,6 +26,13 @@
 #undef PACKAGE_TARNAME
 #undef PACKAGE_VERSION
 #include "config.h"
+
+#include <gssapi/gssapi.h>
+#include <gssapi/gssapi_ext.h>
+#include <gssapi/gssapi_krb5.h>
+#ifdef HAVE_GSSAPI_GSSAPI_NTLMSSP_H
+#  include <gssapi/gssapi_ntlmssp.h>
+#endif
 
 #include "crypto.h"
 #include "sessions.h"
