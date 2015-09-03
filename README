@@ -20,6 +20,14 @@ provided without these extensions.
     krb5 (>=1.11)
     Apache (>=2.4)
 
+### Tests
+
+To run tests, you also need:
+
+* The Kerberos 5 Key-Distribution-Center (`krb5-kdc` package on Debian)
+* [nss_wrapper](https://cwrap.org/nss_wrapper.html)
+* [socket_wrapper](https://cwrap.org/socket_wrapper.html)
+
 Installation
 ------------
 
