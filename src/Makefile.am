@@ -1,4 +1,4 @@
-AM_CPPFLAGS = -Iasn1c
+AM_CPPFLAGS = -I $(srcdir)/asn1c
 
 magdir = $(MAG_LIBDIR)
 mag_LTLIBRARIES = \
