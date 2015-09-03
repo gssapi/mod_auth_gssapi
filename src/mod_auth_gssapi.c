@@ -648,7 +648,7 @@ struct mag_req_cfg *mag_init_cfg(request_rec *req)
         req_cfg->desired_mechs = scfg->default_mechs;
     }
 
-    if (!req_cfg->cfg->mag_skey) {
+    if (req_cfg->cfg->mag_skey) {
         req_cfg->mag_skey = req_cfg->cfg->mag_skey;
     } else {
         /* Use server random key if not explicitly configured */
