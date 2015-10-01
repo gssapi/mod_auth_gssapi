@@ -157,6 +157,7 @@ void mag_check_session(struct mag_req_cfg *cfg, struct mag_conn **conn)
     expiration = gsessdata->expiration;
     if (expiration < time(NULL)) {
         /* credentials fully expired, return nothing */
+        mc->established = false;
         goto done;
     }
 
