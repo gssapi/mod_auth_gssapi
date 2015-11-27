@@ -36,6 +36,7 @@
 
 #include "crypto.h"
 #include "sessions.h"
+#include "environ.h"
 
 #define MIN_SESS_EXP_TIME 300 /* 5 minutes validity minimum */
 
@@ -90,8 +91,12 @@ struct mag_conn {
     int auth_type;
     bool delegated;
     struct databuf basic_hash;
+    bool is_preserved;
 };
 
 #define discard_const(ptr) ((void *)((uintptr_t)(ptr)))
 
 struct mag_conn *mag_new_conn_ctx(apr_pool_t *pool);
+const char *mag_str_auth_type(int auth_type);
+char *mag_gss_name_to_ccache_name(request_rec *req,
+                                  char *dir, const char *gss_name);

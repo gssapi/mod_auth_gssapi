@@ -109,6 +109,7 @@ void mag_check_session(struct mag_req_cfg *cfg, struct mag_conn **conn)
     mc = *conn;
     if (!mc) {
         *conn = mc = mag_new_conn_ctx(req->pool);
+        mc->is_preserved = true;
     }
 
     rc = mag_session_get(req, sess, MAG_BEARER_KEY, &sessval);

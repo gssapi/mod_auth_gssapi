@@ -109,6 +109,7 @@ static int mag_pre_connection(conn_rec *c, void *csd)
     struct mag_conn *mc;
 
     mc = mag_new_conn_ctx(c->pool);
+    mc->is_preserved = true;
     ap_set_module_config(c->conn_config, &auth_gssapi_module, (void*)mc);
     return OK;
 }
@@ -134,7 +135,6 @@ struct mag_conn *mag_new_conn_ctx(apr_pool_t *pool)
      * when the connection/request is terminated */
     apr_pool_cleanup_register(mc->pool, (void *)mc,
                               mag_conn_destroy, apr_pool_cleanup_null);
-
     return mc;
 }
 
@@ -225,8 +225,8 @@ static char *escape(apr_pool_t *pool, const char *name,
     return escaped;
 }
 
-static char *mag_gss_name_to_ccache_name(request_rec *req,
-                                         char *dir, const char *gss_name)
+char *mag_gss_name_to_ccache_name(request_rec *req,
+                                  char *dir, const char *gss_name)
 {
     char *escaped;
 
@@ -240,27 +240,9 @@ static char *mag_gss_name_to_ccache_name(request_rec *req,
     return apr_psprintf(req->pool, "%s/%s", dir, escaped);
 }
 
-static void mag_set_KRB5CCANME(request_rec *req, char *ccname)
-{
-    apr_status_t status;
-    apr_finfo_t finfo;
-    char *value;
-
-    status = apr_stat(&finfo, ccname, APR_FINFO_MIN, req->pool);
-    if (status != APR_SUCCESS && status != APR_INCOMPLETE) {
-        /* set the file cache anyway, but warn */
-        ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, req,
-                      "KRB5CCNAME file (%s) lookup failed!", ccname);
-    }
-
-    value = apr_psprintf(req->pool, "FILE:%s", ccname);
-    apr_table_set(req->subprocess_env, "KRB5CCNAME", value);
-}
-
 static void mag_store_deleg_creds(request_rec *req,
-                                  char *dir, char *clientname,
-                                  gss_cred_id_t delegated_cred,
-                                  char **ccachefile)
+                                  char *dir, const char *gss_name,
+                                  gss_cred_id_t delegated_cred)
 {
     gss_key_value_element_desc element;
     gss_key_value_set_desc store;
@@ -270,7 +252,7 @@ static void mag_store_deleg_creds(request_rec *req,
     store.elements = &element;
     store.count = 1;
 
-    ccname = mag_gss_name_to_ccache_name(req, dir, clientname);
+    ccname = mag_gss_name_to_ccache_name(req, dir, gss_name);
     element.value = apr_psprintf(req->pool, "FILE:%s", ccname);
 
     maj = gss_store_cred_into(&min, delegated_cred, GSS_C_INITIATE,
@@ -280,8 +262,6 @@ static void mag_store_deleg_creds(request_rec *req,
                       mag_error(req, "failed to store delegated creds",
                                 maj, min));
     }
-
-    *ccachefile = ccname;
 }
 #endif
 
@@ -328,26 +308,9 @@ const char *auth_types[] = {
     NULL
 };
 
-static void mag_set_req_data(request_rec *req,
-                             struct mag_config *cfg,
-                             struct mag_conn *mc)
+const char *mag_str_auth_type(int auth_type)
 {
-    apr_table_set(req->subprocess_env, "GSS_NAME", mc->gss_name);
-    apr_table_set(req->subprocess_env, "GSS_SESSION_EXPIRATION",
-                  apr_psprintf(req->pool,
-                               "%ld", (long)mc->expiration));
-    req->ap_auth_type = apr_pstrdup(req->pool,
-                                    auth_types[mc->auth_type]);
-    req->user = apr_pstrdup(req->pool, mc->user_name);
-    if (cfg->deleg_ccache_dir && mc->delegated) {
-        char *ccname;
-        ccname = mag_gss_name_to_ccache_name(req,
-                                             cfg->deleg_ccache_dir,
-                                             mc->gss_name);
-        if (ccname) {
-            mag_set_KRB5CCANME(req, ccname);
-        }
-    }
+    return auth_types[auth_type];
 }
 
 gss_OID_set mag_filter_unwanted_mechs(gss_OID_set src)
@@ -705,12 +668,10 @@ static int mag_auth(request_rec *req)
     uint32_t maj, min;
     char *reply;
     size_t replen;
-    char *clientname;
     gss_OID mech_type = GSS_C_NO_OID;
     gss_OID_set desired_mechs = GSS_C_NO_OID_SET;
     gss_buffer_desc lname = GSS_C_EMPTY_BUFFER;
     struct mag_conn *mc = NULL;
-    time_t expiration;
     int i;
 
     type = ap_auth_type(req);
@@ -792,6 +753,8 @@ static int mag_auth(request_rec *req)
         }
         pctx = &mc->ctx;
     } else {
+        /* no preserved mc, create one just for this request */
+        mc = mag_new_conn_ctx(req->pool);
         pctx = &ctx;
     }
 
@@ -834,7 +797,7 @@ static int mag_auth(request_rec *req)
         ba_user.length = strlen(ba_user.value);
         ba_pwd.length = strlen(ba_pwd.value);
 
-        if (mc && mc->established &&
+        if (mc->is_preserved && mc->established &&
             mag_basic_check(req_cfg, mc, ba_user, ba_pwd)) {
             ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, req,
                           "Already established BASIC AUTH context found!");
@@ -864,14 +827,14 @@ static int mag_auth(request_rec *req)
         goto done;
     }
 
-    if (mc && mc->established) {
+    if (mc->established) {
         /* if we are re-authenticating make sure the conn context
          * is cleaned up so we do not accidentally reuse an existing
          * established context */
         mag_conn_clear(mc);
     }
 
-    req->ap_auth_type = apr_pstrdup(req->pool, auth_types[auth_type]);
+    mc->auth_type = auth_type;
 
 #ifdef HAVE_CRED_STORE
     if (use_s4u2proxy(req_cfg)) {
@@ -914,7 +877,7 @@ static int mag_auth(request_rec *req)
                                 maj, min));
         goto done;
     } else if (maj == GSS_S_CONTINUE_NEEDED) {
-        if (!mc) {
+        if (!mc->is_preserved) {
             ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
                           "Mechanism needs continuation but neither "
                           "GssapiConnectionBound nor "
@@ -927,7 +890,6 @@ static int mag_auth(request_rec *req)
     }
 
 complete:
-    /* Always set the GSS name in an env var */
     maj = gss_display_name(&min, client, &name, NULL);
     if (GSS_ERROR(maj)) {
         ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req, "%s",
@@ -935,26 +897,17 @@ complete:
                                 maj, min));
         goto done;
     }
-    clientname = apr_pstrndup(req->pool, name.value, name.length);
-    apr_table_set(req->subprocess_env, "GSS_NAME", clientname);
-    expiration = time(NULL) + vtime;
-    apr_table_set(req->subprocess_env, "GSS_SESSION_EXPIRATION",
-                  apr_psprintf(req->pool, "%ld", (long)expiration));
+    mc->gss_name = apr_pstrndup(req->pool, name.value, name.length);
+    if (vtime == GSS_C_INDEFINITE || vtime < MIN_SESS_EXP_TIME) {
+        vtime = MIN_SESS_EXP_TIME;
+    }
+    mc->expiration = time(NULL) + vtime;
 
 #ifdef HAVE_CRED_STORE
     if (cfg->deleg_ccache_dir && delegated_cred != GSS_C_NO_CREDENTIAL) {
-        char *ccachefile = NULL;
-
-        mag_store_deleg_creds(req, cfg->deleg_ccache_dir, clientname,
-                              delegated_cred, &ccachefile);
-
-        if (ccachefile) {
-            mag_set_KRB5CCANME(req, ccachefile);
-        }
-
-        if (mc) {
-            mc->delegated = true;
-        }
+        mag_store_deleg_creds(req, cfg->deleg_ccache_dir, mc->gss_name,
+                              delegated_cred);
+        mc->delegated = true;
     }
 #endif
 
@@ -965,27 +918,21 @@ complete:
                           mag_error(req, "gss_localname() failed", maj, min));
             goto done;
         }
-        req->user = apr_pstrndup(req->pool, lname.value, lname.length);
+        mc->user_name = apr_pstrndup(req->pool, lname.value, lname.length);
     } else {
-        req->user = clientname;
+        mc->user_name = apr_pstrdup(mc->pool, mc->gss_name);
     }
 
-    if (mc) {
-        mc->user_name = apr_pstrdup(mc->pool, req->user);
-        mc->gss_name = apr_pstrdup(mc->pool, clientname);
-        mc->established = true;
-        if (vtime == GSS_C_INDEFINITE || vtime < MIN_SESS_EXP_TIME) {
-            vtime = MIN_SESS_EXP_TIME;
-        }
-        mc->expiration = expiration;
-        mc->auth_type = auth_type;
-        if (auth_type == AUTH_TYPE_BASIC) {
-            mag_basic_cache(req_cfg, mc, ba_user, ba_pwd);
-        }
-        if (req_cfg->use_sessions) {
-            mag_attempt_session(req_cfg, mc);
-        }
+    mc->established = true;
+    if (auth_type == AUTH_TYPE_BASIC) {
+        mag_basic_cache(req_cfg, mc, ba_user, ba_pwd);
     }
+    if (req_cfg->use_sessions) {
+        mag_attempt_session(req_cfg, mc);
+    }
+
+    /* Now set request data and env vars */
+    mag_set_req_data(req, cfg, mc);
 
     if (req_cfg->send_persist)
         apr_table_set(req->headers_out, "Persistent-Auth",
@@ -996,11 +943,11 @@ complete:
 done:
 
     if ((auth_type != AUTH_TYPE_BASIC) && (output.length != 0)) {
-        int prefixlen = strlen(auth_types[auth_type]) + 1;
+        int prefixlen = strlen(mag_str_auth_type(auth_type)) + 1;
         replen = apr_base64_encode_len(output.length) + 1;
         reply = apr_pcalloc(req->pool, prefixlen + replen);
         if (reply) {
-            memcpy(reply, auth_types[auth_type], prefixlen - 1);
+            memcpy(reply, mag_str_auth_type(auth_type), prefixlen - 1);
             reply[prefixlen - 1] = ' ';
             apr_base64_encode(&reply[prefixlen], output.value, output.length);
             apr_table_add(req->err_headers_out, req_cfg->rep_proto, reply);
