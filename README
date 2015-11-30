@@ -237,3 +237,30 @@ The recognized mechanism names are: krb5, iakerb, ntlmssp
 
 #### Example
     GssapiBasicAuthMech krb5
+
+
+#### GssapiNameAttributes
+
+Enables the module to source Name Attributes from the client name
+(authorization data associated with the established context) and exposes them
+as environment variables.
+
+Value format: ENV_VAR_NAME ATTRIBUTE_NAME
+
+This option can be specified multiple times, once for each attribute to expose.
+The Special value "json" is used to expose all attributes in a json formatted
+string via the special environment variable GSS_NAME_ATTRS_JSON
+The environment variable GSS_NAME_ATTR_ERROR is set with the Gssapi returned
+error string in case the inquire name function fails to retrieve attributes,
+and with the string "0 attributes found", if no attributes are set.
+
+Note: These variables are NOT saved in the session data stored in the cookie so they
+are available only on the first authenticated request when GssapiUseSessions is
+used.
+
+Note: It is recommended but not required to use only capital letters and underscores
+for environment variable names.
+
+#### Example
+    GssapiNameAttributes json
+    GssapiNameAttributes RADIUS_NAME urn:ietf:params:gss:radius-attribute_1

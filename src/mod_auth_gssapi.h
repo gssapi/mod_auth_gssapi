@@ -46,6 +46,17 @@
 #  endif
 #endif
 
+struct mag_na_map {
+    char *env_name;
+    char *attr_name;
+};
+
+struct mag_name_attributes {
+    bool output_json;
+    int map_count;
+    struct mag_na_map map[];
+};
+
 struct mag_config {
     apr_pool_t *pool;
     bool ssl_only;
@@ -63,6 +74,7 @@ struct mag_config {
     bool use_basic_auth;
     gss_OID_set_desc *allowed_mechs;
     gss_OID_set_desc *basic_mechs;
+    struct mag_name_attributes *name_attributes;
 };
 
 struct mag_server_config {
@@ -81,6 +93,11 @@ struct mag_req_cfg {
     struct seal_key *mag_skey;
 };
 
+struct mag_attr {
+    const char *name;
+    const char *value;
+};
+
 struct mag_conn {
     apr_pool_t *pool;
     gss_ctx_id_t ctx;
@@ -92,6 +109,8 @@ struct mag_conn {
     bool delegated;
     struct databuf basic_hash;
     bool is_preserved;
+    int na_count;
+    struct mag_attr *name_attributes;
 };
 
 #define discard_const(ptr) ((void *)((uintptr_t)(ptr)))
@@ -100,3 +119,4 @@ struct mag_conn *mag_new_conn_ctx(apr_pool_t *pool);
 const char *mag_str_auth_type(int auth_type);
 char *mag_gss_name_to_ccache_name(request_rec *req,
                                   char *dir, const char *gss_name);
+char *mag_error(request_rec *req, const char *msg, uint32_t maj, uint32_t min);

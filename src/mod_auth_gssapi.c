@@ -80,8 +80,7 @@ static char *mag_status(request_rec *req, int type, uint32_t err)
     return msg_ret;
 }
 
-static char *mag_error(request_rec *req, const char *msg,
-                       uint32_t maj, uint32_t min)
+char *mag_error(request_rec *req, const char *msg, uint32_t maj, uint32_t min)
 {
     char *msg_maj;
     char *msg_min;
@@ -897,11 +896,14 @@ complete:
                                 maj, min));
         goto done;
     }
+
     mc->gss_name = apr_pstrndup(req->pool, name.value, name.length);
     if (vtime == GSS_C_INDEFINITE || vtime < MIN_SESS_EXP_TIME) {
         vtime = MIN_SESS_EXP_TIME;
     }
     mc->expiration = time(NULL) + vtime;
+
+    mag_get_name_attributes(req, cfg, client, mc);
 
 #ifdef HAVE_CRED_STORE
     if (cfg->deleg_ccache_dir && delegated_cred != GSS_C_NO_CREDENTIAL) {
@@ -1225,6 +1227,68 @@ static const char *mag_allow_mech(cmd_parms *parms, void *mconfig,
     return NULL;
 }
 
+#define GSS_NAME_ATTR_USERDATA "GSS Name Attributes Userdata"
+
+static apr_status_t mag_name_attrs_cleanup(void *data)
+{
+    struct mag_config *cfg = (struct mag_config *)data;
+    free(cfg->name_attributes);
+    cfg->name_attributes = NULL;
+    return 0;
+}
+
+static const char *mag_name_attrs(cmd_parms *parms, void *mconfig,
+                                  const char *w)
+{
+    struct mag_config *cfg = (struct mag_config *)mconfig;
+    void *tmp_na;
+    size_t size = 0;
+    char *p;
+    int c;
+
+    if (!cfg->name_attributes) {
+        size = sizeof(struct mag_name_attributes)
+                + (sizeof(struct mag_na_map) * 16);
+    } else if (cfg->name_attributes->map_count % 16 == 0) {
+        size = sizeof(struct mag_name_attributes)
+                + (sizeof(struct mag_na_map)
+                    * (cfg->name_attributes->map_count + 16));
+    }
+    if (size) {
+        tmp_na = realloc(cfg->name_attributes, size);
+        if (!tmp_na) apr_pool_abort_get(cfg->pool)(ENOMEM);
+
+        if (cfg->name_attributes) {
+            size_t empty = (sizeof(struct mag_na_map) * 16);
+            memset(tmp_na + size - empty, 0, empty);
+        } else {
+            memset(tmp_na, 0, size);
+        }
+        cfg->name_attributes = (struct mag_name_attributes *)tmp_na;
+        apr_pool_userdata_setn(cfg, GSS_NAME_ATTR_USERDATA,
+                               mag_name_attrs_cleanup, cfg->pool);
+    }
+
+    p = strchr(w, ' ');
+    if (p == NULL) {
+        if (strcmp(w, "json") == 0) {
+            cfg->name_attributes->output_json = true;
+        } else {
+            ap_log_error(APLOG_MARK, APLOG_ERR, 0, parms->server,
+                         "Invalid Name Attributes value [%s].", w);
+        }
+        return NULL;
+    }
+
+    c = cfg->name_attributes->map_count;
+    cfg->name_attributes->map[c].env_name = apr_pstrndup(cfg->pool, w, p-w);
+    p++;
+    cfg->name_attributes->map[c].attr_name = apr_pstrdup(cfg->pool, p);
+    cfg->name_attributes->map_count += 1;
+
+    return NULL;
+}
+
 #ifdef HAVE_GSS_ACQUIRE_CRED_WITH_PASSWORD
 static const char *mag_basic_auth_mechs(cmd_parms *parms, void *mconfig,
                                         const char *w)
@@ -1294,6 +1358,8 @@ static const command_rec mag_commands[] = {
 #endif
     AP_INIT_ITERATE("GssapiAllowedMech", mag_allow_mech, NULL, OR_AUTHCFG,
                     "Allowed Mechanisms"),
+    AP_INIT_RAW_ARGS("GssapiNameAttributes", mag_name_attrs, NULL, OR_AUTHCFG,
+                     "Name Attributes to be exported as environ variables"),
     { NULL }
 };
 
