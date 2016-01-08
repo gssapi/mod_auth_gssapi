@@ -674,6 +674,7 @@ static int mag_auth(request_rec *req)
     gss_buffer_desc lname = GSS_C_EMPTY_BUFFER;
     struct mag_conn *mc = NULL;
     int i;
+    bool send_auth_header = true;
 
     type = ap_auth_type(req);
     if ((type == NULL) || (strcasecmp(type, "GSSAPI") != 0)) {
@@ -764,6 +765,9 @@ static int mag_auth(request_rec *req)
 
     auth_header_type = ap_getword_white(req->pool, &auth_header);
     if (!auth_header_type) goto done;
+
+    /* We got auth header, sending auth header would mean re-auth */
+    send_auth_header = !cfg->negotiate_once;
 
     for (i = 0; auth_types[i] != NULL; i++) {
         if (strcasecmp(auth_header_type, auth_types[i]) == 0) {
@@ -957,11 +961,14 @@ done:
             apr_table_add(req->err_headers_out, req_cfg->rep_proto, reply);
         }
     } else if (ret == HTTP_UNAUTHORIZED) {
-        apr_table_add(req->err_headers_out, req_cfg->rep_proto, "Negotiate");
-
-        if (is_mech_allowed(desired_mechs, gss_mech_ntlmssp,
-                            cfg->gss_conn_ctx)) {
-            apr_table_add(req->err_headers_out, req_cfg->rep_proto, "NTLM");
+        if (send_auth_header) {
+            apr_table_add(req->err_headers_out,
+                          req_cfg->rep_proto, "Negotiate");
+            if (is_mech_allowed(desired_mechs, gss_mech_ntlmssp,
+                                cfg->gss_conn_ctx)) {
+                apr_table_add(req->err_headers_out, req_cfg->rep_proto,
+                              "NTLM");
+            }
         }
         if (cfg->use_basic_auth) {
             apr_table_add(req->err_headers_out, req_cfg->rep_proto,
@@ -1229,6 +1236,14 @@ static const char *mag_allow_mech(cmd_parms *parms, void *mconfig,
     return NULL;
 }
 
+static const char *mag_negotiate_once(cmd_parms *parms, void *mconfig, int on)
+{
+    struct mag_config *cfg = (struct mag_config *)mconfig;
+
+    cfg->negotiate_once = on ? true : false;
+    return NULL;
+}
+
 #define GSS_NAME_ATTR_USERDATA "GSS Name Attributes Userdata"
 
 static apr_status_t mag_name_attrs_cleanup(void *data)
@@ -1360,6 +1375,8 @@ static const command_rec mag_commands[] = {
 #endif
     AP_INIT_ITERATE("GssapiAllowedMech", mag_allow_mech, NULL, OR_AUTHCFG,
                     "Allowed Mechanisms"),
+    AP_INIT_FLAG("GssapiNegotiateOnce", mag_negotiate_once, NULL, OR_AUTHCFG,
+                    "Don't resend negotiate header on negotiate failure"),
     AP_INIT_RAW_ARGS("GssapiNameAttributes", mag_name_attrs, NULL, OR_AUTHCFG,
                      "Name Attributes to be exported as environ variables"),
     { NULL }

@@ -283,6 +283,34 @@ def test_spnego_auth(testdir, testenv, testlog):
         else:
             sys.stderr.write('SPNEGO Proxy Auth: SUCCESS\n')
 
+    with (open(testlog, 'a')) as logfile:
+        spnego = subprocess.Popen(["tests/t_spnego_no_auth.py"],
+                                  stdout=logfile, stderr=logfile,
+                                  env=testenv, preexec_fn=os.setsid)
+        spnego.wait()
+        if spnego.returncode != 0:
+            sys.stderr.write('SPNEGO No Auth: FAILED\n')
+        else:
+            sys.stderr.write('SPNEGO No Auth: SUCCESS\n')
+
+
+def test_spnego_negotiate_once(testdir, testenv, testlog):
+
+    spnego_negotiate_once_dir = os.path.join(testdir, 'httpd', 'html',
+                                          'spnego_negotiate_once')
+    os.mkdir(spnego_negotiate_once_dir)
+    shutil.copy('tests/index.html', spnego_negotiate_once_dir)
+
+    with (open(testlog, 'a')) as logfile:
+        spnego = subprocess.Popen(["tests/t_spnego_negotiate_once.py"],
+                                  stdout=logfile, stderr=logfile,
+                                  env=testenv, preexec_fn=os.setsid)
+        spnego.wait()
+        if spnego.returncode != 0:
+            sys.stderr.write('SPNEGO Negotiate Once: FAILED\n')
+        else:
+            sys.stderr.write('SPNEGO Negotiate Once: SUCCESS\n')
+
 
 def test_basic_auth_krb5(testdir, testenv, testlog):
 
@@ -358,6 +386,7 @@ if __name__ == '__main__':
 
         test_spnego_auth(testdir, testenv, testlog)
 
+        test_spnego_negotiate_once(testdir, testenv, testlog)
 
         testenv = {'MAG_USER_NAME': USR_NAME,
                    'MAG_USER_PASSWORD': USR_PWD,

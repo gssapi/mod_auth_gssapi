@@ -264,3 +264,29 @@ underscores for environment variable names.
 #### Example
     GssapiNameAttributes json
     GssapiNameAttributes RADIUS_NAME urn:ietf:params:gss:radius-attribute_1
+
+
+### GssapiNegotiateOnce
+
+When this option is enabled the Negotiate header will not be resent if
+Negotiation has already been attempted but failed.
+
+Normally when a client fails to use Negotiate authentication, a HTTP 401
+response is returned with a WWW-Authenticate: Negotiate header, implying that
+the client can retry to use Negotiate with different credentials or a
+different mechanism.
+
+Consider enabling GssapiNegotiateOnce when only one single sign on mechanism
+is allowed, or when GssapiBasicAuth is enabled.
+
+**NOTE:** if the initial Negotiate attempt fails, some browsers will fallback
+to other Negotiate mechanisms, prompting the user for login credentials and
+reattempting negotiation. This situation can mislead users - for example if
+krb5 authentication failed and no other mechanisms are allowed, a user could
+be prompted for login information even though any login information provided
+cannot succeed. When this occurs, some browsers will not fall back to a Basic
+Auth mechanism. Enable GssapiNegotiateOnce to avoid this situation.
+
+- **Enable with:** GssapiNegotiateOnce On
+- **Default:** GssapiNegotiateOnce Off
+
