@@ -152,6 +152,10 @@ gss_buffer_desc empty_buffer = GSS_C_EMPTY_BUFFER;
 void mag_get_name_attributes(request_rec *req, struct mag_config *cfg,
                              gss_name_t name, struct mag_conn *mc)
 {
+    if (!cfg->name_attributes) {
+        return;
+    }
+
     uint32_t maj, min;
     gss_buffer_set_t attrs = GSS_C_NO_BUFFER_SET;
     struct name_attr attr;
