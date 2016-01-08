@@ -74,6 +74,7 @@ struct mag_config {
     bool use_basic_auth;
     gss_OID_set_desc *allowed_mechs;
     gss_OID_set_desc *basic_mechs;
+    bool negotiate_once;
     struct mag_name_attributes *name_attributes;
 };
 
