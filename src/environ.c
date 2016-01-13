@@ -276,6 +276,7 @@ void mag_set_req_data(request_rec *req,
         mag_set_name_attributes(req, mc);
     }
 
+#ifdef HAVE_CRED_STORE
     if (cfg->deleg_ccache_dir && mc->delegated) {
         char *ccname;
         ccname = mag_gss_name_to_ccache_name(req,
@@ -285,4 +286,5 @@ void mag_set_req_data(request_rec *req,
             mag_set_KRB5CCANME(req, ccname);
         }
     }
+#endif
 }

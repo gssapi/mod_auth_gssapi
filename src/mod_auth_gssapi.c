@@ -630,6 +630,7 @@ struct mag_req_cfg *mag_init_cfg(request_rec *req)
     return req_cfg;
 }
 
+#ifdef HAVE_CRED_STORE
 static bool use_s4u2proxy(struct mag_req_cfg *req_cfg) {
     if (req_cfg->cfg->use_s4u2proxy) {
         if (req_cfg->cfg->deleg_ccache_dir != NULL) {
@@ -642,6 +643,7 @@ static bool use_s4u2proxy(struct mag_req_cfg *req_cfg) {
     }
     return false;
 }
+#endif
 
 static int mag_auth(request_rec *req)
 {
