@@ -214,7 +214,7 @@ void mag_get_name_attributes(request_rec *req, struct mag_config *cfg,
             attr.value = empty_buffer;
             attr.display_value = empty_buffer;
 
-            if (!mag_get_name_attr(req, name, &attr)) continue;
+            if (!mag_get_name_attr(req, name, &attr)) break;
 
             if (cfg->name_attributes->output_json) {
                 mag_add_json_name_attr(req, i == 0, &attr, &json);
