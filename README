@@ -119,7 +119,7 @@ to handle cookies so that module needs to be activated and configured.
 GSSAPI uses a secured (encrypted + MAC-ed) payload to maintain state in the
 session cookie. The session cookie lifetime depends on the lifetime of the
 GSSAPI session established at authentication.
-NOTE: It is important to correctly set the SessionCookieName option.
+**NOTE**: It is important to correctly set the SessionCookieName option.
 See the
 [mod_sessions](http://httpd.apache.org/docs/current/mod/mod_session.html)
 documentation for more information.
@@ -239,7 +239,7 @@ The recognized mechanism names are: krb5, iakerb, ntlmssp
     GssapiBasicAuthMech krb5
 
 
-#### GssapiNameAttributes
+### GssapiNameAttributes
 
 Enables the module to source Name Attributes from the client name
 (authorization data associated with the established context) and exposes them
@@ -254,12 +254,12 @@ The environment variable GSS_NAME_ATTR_ERROR is set with the Gssapi returned
 error string in case the inquire name function fails to retrieve attributes,
 and with the string "0 attributes found", if no attributes are set.
 
-Note: These variables are NOT saved in the session data stored in the cookie so they
-are available only on the first authenticated request when GssapiUseSessions is
-used.
+**Note**: These variables are NOT saved in the session data stored in the
+cookie so they are available only on the first authenticated request when
+GssapiUseSessions is used.
 
-Note: It is recommended but not required to use only capital letters and underscores
-for environment variable names.
+**Note:** It is recommended but not required to use only capital letters and
+underscores for environment variable names.
 
 #### Example
     GssapiNameAttributes json
