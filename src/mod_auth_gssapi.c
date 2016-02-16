@@ -362,7 +362,6 @@ static bool mag_auth_basic(request_rec *req,
                            struct mag_config *cfg,
                            gss_buffer_desc ba_user,
                            gss_buffer_desc ba_pwd,
-                           gss_cred_usage_t cred_usage,
                            gss_name_t *client,
                            gss_OID *mech_type,
                            gss_cred_id_t *delegated_cred,
@@ -380,7 +379,6 @@ static bool mag_auth_basic(request_rec *req,
     gss_name_t server = GSS_C_NO_NAME;
     gss_cred_id_t server_cred = GSS_C_NO_CREDENTIAL;
     gss_ctx_id_t server_ctx = GSS_C_NO_CONTEXT;
-    gss_cred_id_t acquired_cred = GSS_C_NO_CREDENTIAL;
     gss_buffer_desc input = GSS_C_EMPTY_BUFFER;
     gss_buffer_desc output = GSS_C_EMPTY_BUFFER;
     gss_OID_set allowed_mechs;
@@ -494,18 +492,8 @@ static bool mag_auth_basic(request_rec *req,
 
     /* must acquire creds based on the actual mechs we want to try */
     if (!mag_acquire_creds(req, cfg, actual_mechs,
-                           cred_usage, &acquired_cred, NULL)) {
+                           GSS_C_ACCEPT, &server_cred, NULL)) {
         goto done;
-    }
-
-    if (cred_usage == GSS_C_BOTH) {
-        /* must acquire with GSS_C_ACCEPT to get the server name */
-        if (!mag_acquire_creds(req, cfg, actual_mechs,
-                               GSS_C_ACCEPT, &server_cred, NULL)) {
-            goto done;
-        }
-    } else {
-        server_cred = acquired_cred;
     }
 
 #ifdef HAVE_CRED_STORE
@@ -545,7 +533,7 @@ static bool mag_auth_basic(request_rec *req,
                 break;
             }
             gss_release_buffer(&min, &output);
-            maj = gss_accept_sec_context(&min, &server_ctx, acquired_cred,
+            maj = gss_accept_sec_context(&min, &server_ctx, server_cred,
                                          &input, GSS_C_NO_CHANNEL_BINDINGS,
                                          client, mech_type, &output, NULL,
                                          vtime, delegated_cred);
@@ -568,10 +556,8 @@ done:
     gss_release_buffer(&min, &output);
     gss_release_buffer(&min, &input);
     gss_release_name(&min, &server);
-    if (server_cred != acquired_cred)
-        gss_release_cred(&min, &server_cred);
     gss_delete_sec_context(&min, &server_ctx, GSS_C_NO_BUFFER);
-    gss_release_cred(&min, &acquired_cred);
+    gss_release_cred(&min, &server_cred);
     gss_release_name(&min, &user);
     gss_release_cred(&min, &user_cred);
     gss_delete_sec_context(&min, &user_ctx, GSS_C_NO_BUFFER);
@@ -849,7 +835,7 @@ static int mag_auth(request_rec *req)
 
     if (auth_type == AUTH_TYPE_BASIC) {
         if (mag_auth_basic(req, cfg, ba_user, ba_pwd,
-                           cred_usage, &client, &mech_type,
+                           &client, &mech_type,
                            &delegated_cred, &vtime)) {
             goto complete;
         }

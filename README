@@ -182,6 +182,9 @@ This options requires GssapiDelegCcacheDir to be set. The ccache will be
 populated with the user's provided ticket which is later used as evidence
 ticket by the application.
 
+**Note:** This flag has no effect when Basic-Auth is used since user's
+credentials are delegated anyway when GssapiDelegCcacheDir is set.
+
 #### Example
     GssapiUseS4U2Proxy On
     GssapiCredStore keytab:/etc/httpd.keytab
