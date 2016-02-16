@@ -196,9 +196,9 @@ keytab and store a ccache in the configured ccache file.
 
 ### GssapiBasicAuth
 Allows the use of Basic Auth in conjunction with Negotiate.
-If the browser fails to use Negotiate is will instead fallback to Basic and
+If the browser fails to use Negotiate it will instead fallback to Basic and
 the username and password will be used to try to acquire credentials in the
-module via GSSAPI. If credentials are acquire successfully then they are
+module via GSSAPI. If credentials are acquired successfully then they are
 validated against the server's keytab.
 
 - **Enable with:** GssapiBasicAuth On
