@@ -143,7 +143,7 @@ def setup_kdc(testdir, wrapenv):
     kdcenv.update(wrapenv)
 
     with (open(testlog, 'a')) as logfile:
-        ksetup = subprocess.Popen(["kdb5_util", "create", "-s",
+        ksetup = subprocess.Popen(["kdb5_util", "create", "-W", "-s",
                                    "-r", TESTREALM, "-P", KDC_PASSWORD],
                                   stdout=logfile, stderr=logfile,
                                   env=kdcenv, preexec_fn=os.setsid)
