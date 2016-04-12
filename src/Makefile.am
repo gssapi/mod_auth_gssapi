@@ -20,8 +20,8 @@ mod_auth_gssapi_la_LDFLAGS = \
     -export-symbols-regex auth_gssapi_module
 
 install-exec-local:
-	if test ! -d ${APXS_LIBEXECDIR}; then mkdir -p ${APXS_LIBEXECDIR}; fi
-	@APXS@ -i -S LIBEXECDIR=${APXS_LIBEXECDIR} mod_auth_gssapi.la
+	test -d $(DESTDIR)$(APXS_LIBEXECDIR) || mkdir -p $(DESTDIR)$(APXS_LIBEXECDIR)
+	@APXS@ -i -S LIBEXECDIR=$(DESTDIR)$(APXS_LIBEXECDIR) mod_auth_gssapi.la
 
 clean-local:
 	rm -f mod_auth_gssapi.slo mod_auth_gssapi.la mod_auth_gssapi.lo .libs
