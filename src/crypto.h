@@ -1,4 +1,4 @@
-/* Copyright (C) 2014 mod_auth_gssapi authors - See COPYING for (C) terms */
+/* Copyright (C) 2014 mod_auth_gssapi contributors - See COPYING for (C) terms */
 
 #include <apr_errno.h>
 #include <apr_pools.h>
