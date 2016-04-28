@@ -1,4 +1,4 @@
-/* Copyright (C) 2014 mod_auth_gssapi authors - See COPYING for (C) terms */
+/* Copyright (C) 2014 mod_auth_gssapi contributors - See COPYING for (C) terms */
 
 #include "mod_auth_gssapi.h"
 #include "asn1c/GSSSessionData.h"
