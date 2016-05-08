@@ -1,4 +1,4 @@
-/* Copyright (C) 2014 mod_auth_gssapi contributors - See COPYING for (C) terms */
+/* Copyright (C) 2014, 2016 mod_auth_gssapi contributors - See COPYING for (C) terms */
 
 #include "mod_auth_gssapi.h"
 
@@ -202,10 +202,11 @@ static char *escape(apr_pool_t *pool, const char *name,
     return escaped;
 }
 
-char *mag_gss_name_to_ccache_name(request_rec *req,
-                                  char *dir, const char *gss_name)
+static char *get_ccache_name(request_rec *req, char *dir, const char *gss_name,
+                             bool use_unique, struct mag_conn *mc)
 {
-    char *escaped;
+    char *ccname, *escaped;
+    int ccachefd;
 
     /* We need to escape away '/', we can't have path separators in
      * a ccache file name */
@@ -214,22 +215,32 @@ char *mag_gss_name_to_ccache_name(request_rec *req,
     /* then escape away the separator (/) if any */
     escaped = escape(req->pool, escaped, '/', "~");
 
-    return apr_psprintf(req->pool, "%s/%s", dir, escaped);
+    if (use_unique == false) {
+        return apr_psprintf(req->pool, "%s/%s", dir, escaped);
+    }
+
+    ccname = apr_psprintf(mc->pool, "%s/%s-XXXXXX", dir, escaped);
+
+    ccachefd = mkstemp(ccname);
+    if (ccachefd == -1) {
+        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
+                      "creating unique ccache file %s failed", ccname);
+        return NULL;
+    }
+    close(ccachefd);
+    return ccname;
 }
 
-static void mag_store_deleg_creds(request_rec *req,
-                                  char *dir, const char *gss_name,
+static void mag_store_deleg_creds(request_rec *req, const char *ccname,
                                   gss_cred_id_t delegated_cred)
 {
     gss_key_value_element_desc element;
     gss_key_value_set_desc store;
-    char *ccname;
     uint32_t maj, min;
     element.key = "ccache";
     store.elements = &element;
     store.count = 1;
 
-    ccname = mag_gss_name_to_ccache_name(req, dir, gss_name);
     element.value = apr_psprintf(req->pool, "FILE:%s", ccname);
 
     maj = gss_store_cred_into(&min, delegated_cred, GSS_C_INITIATE,
@@ -877,9 +888,30 @@ complete:
 
 #ifdef HAVE_CRED_STORE
     if (cfg->deleg_ccache_dir && delegated_cred != GSS_C_NO_CREDENTIAL) {
-        mag_store_deleg_creds(req, cfg->deleg_ccache_dir, mc->gss_name,
-                              delegated_cred);
+        char *ccache_path;
+
+        mc->ccname = 0;
+        ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, req,
+                      "requester: %s", mc->gss_name);
+
+        ccache_path = get_ccache_name(req, cfg->deleg_ccache_dir, mc->gss_name,
+                                      cfg->deleg_ccache_unique, mc);
+        if (ccache_path == NULL) {
+            goto done;
+        }
+
+        mag_store_deleg_creds(req, ccache_path, delegated_cred);
         mc->delegated = true;
+
+        if (!req_cfg->use_sessions && cfg->deleg_ccache_unique) {
+            /* queue removing ccache to avoid littering filesystem */
+            apr_pool_cleanup_register(mc->pool, ccache_path,
+                                      (int (*)(void *)) unlink,
+                                      apr_pool_cleanup_null);
+        }
+
+        /* extract filename from full path */
+        mc->ccname = strrchr(ccache_path, '/') + 1;
     }
 #endif
 
@@ -1006,6 +1038,15 @@ static const char *mag_use_s4u2p(cmd_parms *parms, void *mconfig, int on)
 
     return NULL;
 }
+
+static const char *mag_deleg_ccache_unique(cmd_parms *parms, void *mconfig,
+                                           int on)
+{
+    struct mag_config *cfg = (struct mag_config *)mconfig;
+    cfg->deleg_ccache_unique = on ? true : false;
+    return NULL;
+}
+
 #endif
 
 static const char *mag_sess_key(cmd_parms *parms, void *mconfig, const char *w)
@@ -1330,6 +1371,8 @@ static const command_rec mag_commands[] = {
                     "Credential Store"),
     AP_INIT_RAW_ARGS("GssapiDelegCcacheDir", mag_deleg_ccache_dir, NULL,
                      OR_AUTHCFG, "Directory to store delegated credentials"),
+    AP_INIT_FLAG("GssapiDelegCcacheUnique", mag_deleg_ccache_unique, NULL,
+                 OR_AUTHCFG, "Use unique ccaches for delgation"),
 #endif
 #ifdef HAVE_GSS_ACQUIRE_CRED_WITH_PASSWORD
     AP_INIT_FLAG("GssapiBasicAuth", mag_use_basic_auth, NULL, OR_AUTHCFG,

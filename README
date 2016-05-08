@@ -171,6 +171,19 @@ A user foo@EXAMPLE.COM delegating its credentials would cause the server to
 create a ccache file named /var/run/httpd/clientcaches/foo@EXAMPLE.COM
 
 
+### GssapiDelegCcacheUnique
+
+Enables using unique ccache names for delegation.  ccache files will be placed
+in GssapiDelegCcacheDir and named using the principal and a six-digit unique
+suffix.
+
+**Note:** Consuming application must delete the ccache otherwise it will
+litter the filesystem if sessions are used.  An example sweeper can be found
+in the contrib directory.
+
+#### Example
+    GssapiDelegCcacheUnique On
+
 ### GssapiUseS4U2Proxy
 
 Enables the use of the s4u2Proxy Kerberos extension also known as

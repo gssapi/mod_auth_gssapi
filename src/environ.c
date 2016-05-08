@@ -1,4 +1,4 @@
-/* Copyright (C) 2015 mod_auth_gssapi contributors - See COPYING for (C) terms */
+/* Copyright (C) 2015, 2016 mod_auth_gssapi contributors - See COPYING for (C) terms */
 
 #include "mod_auth_gssapi.h"
 
@@ -243,7 +243,8 @@ static void mag_set_name_attributes(request_rec *req, struct mag_conn *mc)
     }
 }
 
-static void mag_set_KRB5CCANME(request_rec *req, char *ccname)
+static void mag_set_KRB5CCANME(request_rec *req, const char *dir,
+                               const char *ccname)
 {
     apr_status_t status;
     apr_finfo_t finfo;
@@ -256,7 +257,7 @@ static void mag_set_KRB5CCANME(request_rec *req, char *ccname)
                       "KRB5CCNAME file (%s) lookup failed!", ccname);
     }
 
-    value = apr_psprintf(req->pool, "FILE:%s", ccname);
+    value = apr_psprintf(req->pool, "FILE:%s/%s", dir, ccname);
     apr_table_set(req->subprocess_env, "KRB5CCNAME", value);
 }
 
@@ -277,14 +278,8 @@ void mag_set_req_data(request_rec *req,
     }
 
 #ifdef HAVE_CRED_STORE
-    if (cfg->deleg_ccache_dir && mc->delegated) {
-        char *ccname;
-        ccname = mag_gss_name_to_ccache_name(req,
-                                             cfg->deleg_ccache_dir,
-                                             mc->gss_name);
-        if (ccname) {
-            mag_set_KRB5CCANME(req, ccname);
-        }
+    if (cfg->deleg_ccache_dir && mc->delegated && mc->ccname) {
+        mag_set_KRB5CCANME(req, cfg->deleg_ccache_dir, mc->ccname);
     }
 #endif
 }

@@ -1,4 +1,4 @@
-/* Copyright (C) 2014 mod_auth_gssapi contributors - See COPYING for (C) terms */
+/* Copyright (C) 2014, 2016 mod_auth_gssapi contributors - See COPYING for (C) terms */
 
 #include "mod_auth_gssapi.h"
 #include "asn1c/GSSSessionData.h"
@@ -179,6 +179,12 @@ void mag_check_session(struct mag_req_cfg *cfg, struct mag_conn **conn)
     memcpy(mc->basic_hash.value,
            gsessdata->basichash.buf, gsessdata->basichash.size);
 
+    /* ccname */
+    mc->ccname = apr_pstrndup(mc->pool,
+                              (char *)gsessdata->ccname.buf,
+                              gsessdata->ccname.size);
+    if (!mc->ccname) goto done;
+
     /* OK we have a valid token */
     mc->established = true;
 
@@ -223,6 +229,8 @@ void mag_attempt_session(struct mag_req_cfg *cfg, struct mag_conn *mc)
     if (OCTET_STRING_fromBuf(&gsessdata.basichash,
                              (const char *)mc->basic_hash.value,
                              mc->basic_hash.length) != 0)
+        goto done;
+    if (OCTET_STRING_fromString(&gsessdata.ccname, mc->ccname) != 0)
         goto done;
     ret = encode_GSSSessionData(req->pool, &gsessdata,
                                 &plainbuf.value, &plainbuf.length);
