@@ -8,6 +8,7 @@ GssapiSessionModule DEFINITIONS ::= BEGIN
         expiration  [2] Uint32,
         username    [3] OCTET STRING,
         gssname     [4] OCTET STRING,
-        basichash   [5] OCTET STRING
+        basichash   [5] OCTET STRING,
+        ccname      [6] OCTET STRING
     }
 END

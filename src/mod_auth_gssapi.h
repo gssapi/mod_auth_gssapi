@@ -1,8 +1,10 @@
-/* Copyright (C) 2014 mod_auth_gssapi contributors - See COPYING for (C) terms */
+/* Copyright (C) 2014, 2016 mod_auth_gssapi contributors - See COPYING for (C) terms */
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <time.h>
+#include <unistd.h>
 
 #define APR_WANT_STRFUNC
 #include "apr_want.h"
@@ -68,6 +70,7 @@ struct mag_config {
     bool use_s4u2proxy;
     char *deleg_ccache_dir;
     gss_key_value_set_desc *cred_store;
+    bool deleg_ccache_unique;;
 #endif
     struct seal_key *mag_skey;
 
@@ -112,12 +115,11 @@ struct mag_conn {
     bool is_preserved;
     int na_count;
     struct mag_attr *name_attributes;
+    const char *ccname;
 };
 
 #define discard_const(ptr) ((void *)((uintptr_t)(ptr)))
 
 struct mag_conn *mag_new_conn_ctx(apr_pool_t *pool);
 const char *mag_str_auth_type(int auth_type);
-char *mag_gss_name_to_ccache_name(request_rec *req,
-                                  char *dir, const char *gss_name);
 char *mag_error(request_rec *req, const char *msg, uint32_t maj, uint32_t min);
