@@ -215,7 +215,13 @@ void mag_attempt_session(struct mag_req_cfg *cfg, struct mag_conn *mc)
 
     gsessdata.established = mc->established?1:0;
     gsessdata.delegated = mc->delegated?1:0;
+
+    if (sess->expiry != 0) {
+        mc->expiration = mc->expiration < apr_time_sec(sess->expiry) ?
+                         mc->expiration : apr_time_sec(sess->expiry);
+    }
     gsessdata.expiration = mc->expiration;
+
     if (OCTET_STRING_fromString(&gsessdata.username, mc->user_name) != 0)
         goto done;
     if (OCTET_STRING_fromString(&gsessdata.gssname, mc->gss_name) != 0)
