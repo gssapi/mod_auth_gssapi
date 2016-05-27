@@ -1392,7 +1392,12 @@ static const command_rec mag_commands[] = {
 static void
 mag_register_hooks(apr_pool_t *p)
 {
+#ifdef AP_AUTH_INTERNAL_PER_CONF
+    ap_hook_check_authn(mag_auth, NULL, NULL, APR_HOOK_MIDDLE,
+                                                AP_AUTH_INTERNAL_PER_CONF);
+#else
     ap_hook_check_user_id(mag_auth, NULL, NULL, APR_HOOK_MIDDLE);
+#endif
     ap_hook_post_config(mag_post_config, NULL, NULL, APR_HOOK_MIDDLE);
     ap_hook_pre_connection(mag_pre_connection, NULL, NULL, APR_HOOK_MIDDLE);
 }
