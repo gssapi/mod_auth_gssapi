@@ -308,3 +308,19 @@ Auth mechanism. Enable GssapiNegotiateOnce to avoid this situation.
 - **Enable with:** GssapiNegotiateOnce On
 - **Default:** GssapiNegotiateOnce Off
 
+### GssapiImpersonate
+
+This option can be used even if AuthType GSSAPI is not used for given
+Location or LocationMatch, to obtain service ticket for a user that was
+already authenticated by different module.
+
+The principal of the user is retrieved from the internal r->user
+identifier which typically holds the username from the authentication
+results.
+
+Make sure the server principal is set to allow to acquire forwardable
+tickets to itself from arbitrary users, for use with constrained
+delegation, for example with the option +ok_to_auth_as_delegate.
+
+- **Enable with:** GssapiImpersonate On
+- **Default:** GssapiImpersonate Off

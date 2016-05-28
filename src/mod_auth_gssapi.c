@@ -645,6 +645,202 @@ static bool use_s4u2proxy(struct mag_req_cfg *req_cfg) {
     }
     return false;
 }
+
+static apr_status_t mag_s4u2self(request_rec *req) {
+    apr_status_t status = DECLINED;
+    struct mag_config *cfg;
+    struct mag_req_cfg *req_cfg;
+    gss_OID_set_desc gss_mech_krb5_set = { 1, discard_const(gss_mech_krb5) };
+    gss_OID_set actual_mechs = GSS_C_NO_OID_SET;
+    gss_buffer_desc principal = GSS_C_EMPTY_BUFFER;
+    gss_cred_id_t user_cred = GSS_C_NO_CREDENTIAL;
+    gss_name_t user = GSS_C_NO_NAME;
+    gss_name_t client_name = GSS_C_NO_NAME;
+    gss_buffer_desc client_display_name = GSS_C_EMPTY_BUFFER;
+    gss_cred_id_t server_cred = GSS_C_NO_CREDENTIAL;
+    gss_name_t server_name = GSS_C_NO_NAME;
+    gss_buffer_desc server_display_name = GSS_C_EMPTY_BUFFER;
+    gss_cred_id_t delegated_cred = GSS_C_NO_CREDENTIAL;
+    gss_ctx_id_t initiator_context = GSS_C_NO_CONTEXT;
+    gss_buffer_desc init_token = GSS_C_EMPTY_BUFFER;
+    gss_ctx_id_t acceptor_context = GSS_C_NO_CONTEXT;
+    gss_buffer_desc accept_token = GSS_C_EMPTY_BUFFER;
+    struct mag_conn *mc = NULL;
+    uint32_t maj, min;
+
+    req_cfg = mag_init_cfg(req);
+    cfg = req_cfg->cfg;
+    if (!cfg->s4u2self) {
+        ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, req,
+                      "GSSapiImpersonate not On, skipping impersonation.");
+        return DECLINED;
+    }
+    if (!cfg->deleg_ccache_dir) {
+        ap_log_rerror(APLOG_MARK, APLOG_INFO, 0, req,
+                      "GssapiDelegCcacheDir not set, "
+                      "skipping impersonation.");
+        return DECLINED;
+    }
+    if (!req->user) {
+        ap_log_rerror(APLOG_MARK, APLOG_INFO, 0, req,
+                      "Authentication user not found, "
+                      "skipping impersonation.");
+        return DECLINED;
+    }
+
+    principal.value = req->user;
+    principal.length = strlen(principal.value);
+    ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, req,
+                  "Using user %s for impersonation.",
+                  (char *)principal.value);
+
+    if (!mag_acquire_creds(req, cfg, &gss_mech_krb5_set,
+                           GSS_C_BOTH, &server_cred, NULL)) {
+        goto done;
+    }
+
+    maj = gss_inquire_cred(&min, server_cred, &server_name, NULL, NULL, NULL);
+    if (GSS_ERROR(maj)) {
+        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
+                      mag_error(req,
+                      "gss_inquired_cred() failed to inquire server creds",
+                      maj, min));
+        goto done;
+    }
+
+    maj = gss_display_name(&min, server_name, &server_display_name, NULL);
+    if (GSS_ERROR(maj)) {
+        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
+                      mag_error(req,
+                      "gss_display_name() failed to export server name",
+                      maj, min));
+        goto done;
+    }
+
+    maj = gss_import_name(&min, &principal, GSS_C_NT_USER_NAME, &user);
+    if (GSS_ERROR(maj)) {
+        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
+                      mag_error(req,
+                      "gss_import_name() failed to import principal",
+                      maj, min));
+        goto done;
+    }
+
+    maj = gss_acquire_cred_impersonate_name(&min, server_cred, user,
+                                            GSS_C_INDEFINITE,
+                                            &gss_mech_krb5_set,
+                                            GSS_C_INITIATE, &user_cred,
+                                            &actual_mechs, NULL);
+    if (GSS_ERROR(maj)) {
+        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
+                      "gss_acquire_cred_impersonate_name() for %s failed%s",
+                      (char *)principal.value,
+                      mag_error(req, "", maj, min));
+        goto done;
+    }
+
+    do {
+        /* output and input are inverted here, this is intentional */
+
+        /* now acquire credentials for impersonated user to self */
+        maj = gss_init_sec_context(&min, user_cred, &initiator_context,
+                                   server_name, discard_const(gss_mech_krb5),
+                                   GSS_C_REPLAY_FLAG | GSS_C_SEQUENCE_FLAG,
+                                   GSS_C_INDEFINITE,
+                                   GSS_C_NO_CHANNEL_BINDINGS, &accept_token,
+                                   NULL, &init_token, NULL, NULL);
+        if (GSS_ERROR(maj)) {
+            ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
+                          mag_error(req,
+                                    "gss_init_sec_context() failed",
+                                    maj, min));
+            goto done;
+        }
+        gss_release_buffer(&min, &accept_token);
+
+        /* accept context to be able to store delegated credentials */
+        maj = gss_accept_sec_context(&min, &acceptor_context, server_cred,
+                                     &init_token, GSS_C_NO_CHANNEL_BINDINGS,
+                                     &client_name, NULL, &accept_token,
+                                     NULL, NULL, &delegated_cred);
+        if (GSS_ERROR(maj)) {
+            ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
+                          mag_error(req,
+                                    "gss_accept_sec_context() failed",
+                                    maj, min));
+            goto done;
+        }
+        gss_release_buffer(&min, &init_token);
+    } while (maj == GSS_S_CONTINUE_NEEDED);
+
+    maj = gss_display_name(&min, client_name, &client_display_name, NULL);
+    if (GSS_ERROR(maj)) {
+        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
+                      "gss_display_name() for %s failed%s",
+                      (char *)principal.value,
+                      mag_error(req, "", maj, min));
+        goto done;
+    }
+
+    if (delegated_cred == GSS_C_NO_CREDENTIAL) {
+        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
+                      "Failed to obtain deletaged credentials for %s, "
+                      "does %s have +ok_to_auth_as_delegate?",
+                      (char *)client_display_name.value,
+                      (char *)server_display_name.value);
+        goto done;
+    }
+    ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, req,
+                  "Delegated credentials obtained for %s by %s via %s.",
+                  (char *)principal.value, (char *)server_display_name.value,
+                  (char *)client_display_name.value);
+
+    if (cfg->gss_conn_ctx) {
+        mc = (struct mag_conn *)ap_get_module_config(
+                                                req->connection->conn_config,
+                                                &auth_gssapi_module);
+        if (!mc) {
+            ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, req,
+                          "Failed to retrieve connection context!");
+            goto done;
+        }
+    }
+
+    /* if available, session always supersedes connection bound data */
+    if (req_cfg->use_sessions) {
+        mag_check_session(req_cfg, &mc);
+    }
+
+    if (!mc) {
+        /* no preserved mc, create one just for this request */
+        mc = mag_new_conn_ctx(req->pool);
+    }
+
+    mc->gss_name = apr_pstrndup(req->pool, client_display_name.value,
+                                client_display_name.length);
+
+    mag_store_deleg_creds(req, req_cfg, mc, delegated_cred);
+
+    status = OK;
+
+done:
+    gss_release_oid_set(&min, &actual_mechs);
+    principal.value = NULL;
+    gss_release_buffer(&min, &principal);
+    gss_release_cred(&min, &user_cred);
+    gss_release_name(&min, &user);
+    gss_release_name(&min, &client_name);
+    gss_release_buffer(&min, &client_display_name);
+    gss_release_cred(&min, &server_cred);
+    gss_release_name(&min, &server_name);
+    gss_release_buffer(&min, &server_display_name);
+    gss_release_cred(&min, &delegated_cred);
+    gss_delete_sec_context(&min, &initiator_context, GSS_C_NO_BUFFER);
+    gss_release_buffer(&min, &init_token);
+    gss_delete_sec_context(&min, &acceptor_context, GSS_C_NO_BUFFER);
+    gss_release_buffer(&min, &accept_token);
+    return status;
+}
 #endif
 
 static int mag_auth(request_rec *req)
@@ -1379,6 +1575,10 @@ static const command_rec mag_commands[] = {
                      OR_AUTHCFG, "Directory to store delegated credentials"),
     AP_INIT_FLAG("GssapiDelegCcacheUnique", mag_deleg_ccache_unique, NULL,
                  OR_AUTHCFG, "Use unique ccaches for delgation"),
+    AP_INIT_FLAG("GssapiImpersonate", ap_set_flag_slot,
+          (void *)APR_OFFSETOF(struct mag_config, s4u2self), OR_AUTHCFG,
+               "Do impersonation call (S4U2Self) "
+               "based on already authentication username"),
 #endif
 #ifdef HAVE_GSS_ACQUIRE_CRED_WITH_PASSWORD
     AP_INIT_FLAG("GssapiBasicAuth", mag_use_basic_auth, NULL, OR_AUTHCFG,
@@ -1406,6 +1606,9 @@ mag_register_hooks(apr_pool_t *p)
 #endif
     ap_hook_post_config(mag_post_config, NULL, NULL, APR_HOOK_MIDDLE);
     ap_hook_pre_connection(mag_pre_connection, NULL, NULL, APR_HOOK_MIDDLE);
+#ifdef HAVE_CRED_STORE
+    ap_hook_fixups(mag_s4u2self, NULL, NULL, APR_HOOK_MIDDLE);
+#endif
 }
 
 module AP_MODULE_DECLARE_DATA auth_gssapi_module =
