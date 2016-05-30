@@ -24,9 +24,11 @@ provided without these extensions.
 
 To run tests, you also need:
 
-* The Kerberos 5 Key-Distribution-Center (`krb5-kdc` package on Debian)
-* [nss_wrapper](https://cwrap.org/nss_wrapper.html)
-* [socket_wrapper](https://cwrap.org/socket_wrapper.html)
+* The Kerberos 5 Key-Distribution-Center (`krb5-kdc` package on Debian,
+  `krb5-server` on Fedora)
+* Packages `mod_session`, `krb5-workstation` on Fedora
+* [nss_wrapper](https://cwrap.org/nss_wrapper.html), packaged in Fedora
+* [socket_wrapper](https://cwrap.org/socket_wrapper.html), packaged in Fedora
 
 Installation
 ------------
