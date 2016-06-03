@@ -231,17 +231,31 @@ static char *get_ccache_name(request_rec *req, char *dir, const char *gss_name,
     return ccname;
 }
 
-static void mag_store_deleg_creds(request_rec *req, const char *ccname,
+static bool mag_store_deleg_creds(request_rec *req,
+                                  struct mag_req_cfg *req_cfg,
+                                  struct mag_conn *mc,
                                   gss_cred_id_t delegated_cred)
 {
+    struct mag_config *cfg;
     gss_key_value_element_desc element;
     gss_key_value_set_desc store;
+    char *ccache_path;
     uint32_t maj, min;
     element.key = "ccache";
     store.elements = &element;
     store.count = 1;
 
-    element.value = apr_psprintf(req->pool, "FILE:%s", ccname);
+    mc->ccname = 0;
+    cfg = req_cfg->cfg;
+    ccache_path = get_ccache_name(req, cfg->deleg_ccache_dir, mc->gss_name,
+                                  cfg->deleg_ccache_unique, mc);
+    if (ccache_path == NULL) {
+        return false;
+    }
+
+    element.value = apr_psprintf(req->pool, "FILE:%s", ccache_path);
+    ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, req,
+                  "Storing delegated credentials in %s", element.value);
 
     maj = gss_store_cred_into(&min, delegated_cred, GSS_C_INITIATE,
                               GSS_C_NULL_OID, 1, 1, &store, NULL, NULL);
@@ -250,6 +264,19 @@ static void mag_store_deleg_creds(request_rec *req, const char *ccname,
                       mag_error(req, "failed to store delegated creds",
                                 maj, min));
     }
+
+    mc->delegated = true;
+
+    if (!req_cfg->use_sessions && cfg->deleg_ccache_unique) {
+        /* queue removing ccache to avoid littering filesystem */
+        apr_pool_cleanup_register(mc->pool, ccache_path,
+                                  (int (*)(void *)) unlink,
+                                  apr_pool_cleanup_null);
+    }
+
+    /* extract filename from full path */
+    mc->ccname = strrchr(ccache_path, '/') + 1;
+    return true;
 }
 #endif
 
@@ -888,30 +915,9 @@ complete:
 
 #ifdef HAVE_CRED_STORE
     if (cfg->deleg_ccache_dir && delegated_cred != GSS_C_NO_CREDENTIAL) {
-        char *ccache_path;
-
-        mc->ccname = 0;
-        ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, req,
-                      "requester: %s", mc->gss_name);
-
-        ccache_path = get_ccache_name(req, cfg->deleg_ccache_dir, mc->gss_name,
-                                      cfg->deleg_ccache_unique, mc);
-        if (ccache_path == NULL) {
+        if (!mag_store_deleg_creds(req, req_cfg, mc, delegated_cred)) {
             goto done;
         }
-
-        mag_store_deleg_creds(req, ccache_path, delegated_cred);
-        mc->delegated = true;
-
-        if (!req_cfg->use_sessions && cfg->deleg_ccache_unique) {
-            /* queue removing ccache to avoid littering filesystem */
-            apr_pool_cleanup_register(mc->pool, ccache_path,
-                                      (int (*)(void *)) unlink,
-                                      apr_pool_cleanup_null);
-        }
-
-        /* extract filename from full path */
-        mc->ccname = strrchr(ccache_path, '/') + 1;
     }
 #endif
 
