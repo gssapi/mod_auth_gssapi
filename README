@@ -33,6 +33,7 @@ To run tests, you also need:
 Installation
 ------------
 
+    autoreconf -fi
     ./configure
     make
     make install
