@@ -248,16 +248,19 @@ static void mag_set_KRB5CCNAME(request_rec *req, const char *dir,
 {
     apr_status_t status;
     apr_finfo_t finfo;
+    char *path;
     char *value;
 
-    status = apr_stat(&finfo, ccname, APR_FINFO_MIN, req->pool);
+    path = apr_psprintf(req->pool, "%s/%s", dir, ccname);
+
+    status = apr_stat(&finfo, path, APR_FINFO_MIN, req->pool);
     if (status != APR_SUCCESS && status != APR_INCOMPLETE) {
         /* set the file cache anyway, but warn */
         ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, req,
-                      "KRB5CCNAME file (%s) lookup failed!", ccname);
+                      "KRB5CCNAME file (%s) lookup failed!", path);
     }
 
-    value = apr_psprintf(req->pool, "FILE:%s/%s", dir, ccname);
+    value = apr_psprintf(req->pool, "FILE:%s", path);
     apr_table_set(req->subprocess_env, "KRB5CCNAME", value);
 }
 
