@@ -243,7 +243,7 @@ static void mag_set_name_attributes(request_rec *req, struct mag_conn *mc)
     }
 }
 
-static void mag_set_KRB5CCANME(request_rec *req, const char *dir,
+static void mag_set_KRB5CCNAME(request_rec *req, const char *dir,
                                const char *ccname)
 {
     apr_status_t status;
@@ -279,7 +279,7 @@ void mag_set_req_data(request_rec *req,
 
 #ifdef HAVE_CRED_STORE
     if (cfg->deleg_ccache_dir && mc->delegated && mc->ccname) {
-        mag_set_KRB5CCANME(req, cfg->deleg_ccache_dir, mc->ccname);
+        mag_set_KRB5CCNAME(req, cfg->deleg_ccache_dir, mc->ccname);
     }
 #endif
 }
