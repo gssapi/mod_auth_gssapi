@@ -620,6 +620,10 @@ static bool use_s4u2proxy(struct mag_req_cfg *req_cfg) {
 }
 #endif
 
+static int mag_complete(struct mag_req_cfg *req_cfg, struct mag_conn *mc,
+                        gss_name_t client, gss_OID mech_type,
+                        uint32_t vtime, gss_cred_id_t delegated_cred);
+
 static int mag_auth(request_rec *req)
 {
     const char *type;
@@ -633,7 +637,6 @@ static int mag_auth(request_rec *req)
     gss_ctx_id_t *pctx;
     gss_buffer_desc input = GSS_C_EMPTY_BUFFER;
     gss_buffer_desc output = GSS_C_EMPTY_BUFFER;
-    gss_buffer_desc name = GSS_C_EMPTY_BUFFER;
     gss_buffer_desc ba_user;
     gss_buffer_desc ba_pwd;
     gss_name_t client = GSS_C_NO_NAME;
@@ -646,7 +649,6 @@ static int mag_auth(request_rec *req)
     size_t replen;
     gss_OID mech_type = GSS_C_NO_OID;
     gss_OID_set desired_mechs = GSS_C_NO_OID_SET;
-    gss_buffer_desc lname = GSS_C_EMPTY_BUFFER;
     struct mag_conn *mc = NULL;
     int i;
     bool send_auth_header = true;
@@ -826,7 +828,11 @@ static int mag_auth(request_rec *req)
         if (mag_auth_basic(req, cfg, ba_user, ba_pwd,
                            &client, &mech_type,
                            &delegated_cred, &vtime)) {
-            goto complete;
+
+            ret = mag_complete(req_cfg, mc, client, mech_type, vtime,
+                               delegated_cred);
+            if (ret == OK)
+                mag_basic_cache(req_cfg, mc, ba_user, ba_pwd);
         }
         goto done;
     }
@@ -869,7 +875,60 @@ static int mag_auth(request_rec *req)
         goto done;
     }
 
-complete:
+    ret = mag_complete(req_cfg, mc, client, mech_type, vtime, delegated_cred);
+
+    if (ret == OK && req_cfg->send_persist)
+        apr_table_set(req->headers_out, "Persistent-Auth",
+            cfg->gss_conn_ctx ? "true" : "false");
+
+done:
+    if ((auth_type != AUTH_TYPE_BASIC) && (output.length != 0)) {
+        int prefixlen = strlen(mag_str_auth_type(auth_type)) + 1;
+        replen = apr_base64_encode_len(output.length) + 1;
+        reply = apr_pcalloc(req->pool, prefixlen + replen);
+        if (reply) {
+            memcpy(reply, mag_str_auth_type(auth_type), prefixlen - 1);
+            reply[prefixlen - 1] = ' ';
+            apr_base64_encode(&reply[prefixlen], output.value, output.length);
+            apr_table_add(req->err_headers_out, req_cfg->rep_proto, reply);
+        }
+    } else if (ret == HTTP_UNAUTHORIZED) {
+        if (send_auth_header) {
+            apr_table_add(req->err_headers_out,
+                          req_cfg->rep_proto, "Negotiate");
+            if (is_mech_allowed(desired_mechs, gss_mech_ntlmssp,
+                                cfg->gss_conn_ctx)) {
+                apr_table_add(req->err_headers_out, req_cfg->rep_proto,
+                              "NTLM");
+            }
+        }
+        if (cfg->use_basic_auth) {
+            apr_table_add(req->err_headers_out, req_cfg->rep_proto,
+                          apr_psprintf(req->pool, "Basic realm=\"%s\"",
+                                       ap_auth_name(req)));
+        }
+    }
+
+    if (ctx != GSS_C_NO_CONTEXT)
+        gss_delete_sec_context(&min, &ctx, GSS_C_NO_BUFFER);
+    gss_release_cred(&min, &acquired_cred);
+    gss_release_cred(&min, &delegated_cred);
+    gss_release_buffer(&min, &output);
+    gss_release_name(&min, &client);
+    return ret;
+}
+
+static int mag_complete(struct mag_req_cfg *req_cfg, struct mag_conn *mc,
+                        gss_name_t client, gss_OID mech_type,
+                        uint32_t vtime, gss_cred_id_t delegated_cred)
+{
+    gss_buffer_desc lname = GSS_C_EMPTY_BUFFER;
+    gss_buffer_desc name = GSS_C_EMPTY_BUFFER;
+    struct mag_config *cfg = req_cfg->cfg;
+    request_rec *req = req_cfg->req;
+    int ret = HTTP_UNAUTHORIZED;
+    uint32_t maj, min;
+
     maj = gss_display_name(&min, client, &name, NULL);
     if (GSS_ERROR(maj)) {
         ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req, "%s",
@@ -887,7 +946,8 @@ complete:
     mag_get_name_attributes(req, cfg, client, mc);
 
 #ifdef HAVE_CRED_STORE
-    if (cfg->deleg_ccache_dir && delegated_cred != GSS_C_NO_CREDENTIAL) {
+    if (cfg->deleg_ccache_dir &&
+        delegated_cred != GSS_C_NO_CREDENTIAL) {
         char *ccache_path;
 
         mc->ccname = 0;
@@ -922,15 +982,12 @@ complete:
                           mag_error(req, "gss_localname() failed", maj, min));
             goto done;
         }
-        mc->user_name = apr_pstrndup(req->pool, lname.value, lname.length);
+        mc->user_name = apr_pstrndup(mc->pool, lname.value, lname.length);
     } else {
         mc->user_name = apr_pstrdup(mc->pool, mc->gss_name);
     }
 
     mc->established = true;
-    if (auth_type == AUTH_TYPE_BASIC) {
-        mag_basic_cache(req_cfg, mc, ba_user, ba_pwd);
-    }
     if (req_cfg->use_sessions) {
         mag_attempt_session(req_cfg, mc);
     }
@@ -938,52 +995,13 @@ complete:
     /* Now set request data and env vars */
     mag_set_req_data(req, cfg, mc);
 
-    if (req_cfg->send_persist)
-        apr_table_set(req->headers_out, "Persistent-Auth",
-            cfg->gss_conn_ctx ? "true" : "false");
-
     ret = OK;
 
 done:
-
-    if ((auth_type != AUTH_TYPE_BASIC) && (output.length != 0)) {
-        int prefixlen = strlen(mag_str_auth_type(auth_type)) + 1;
-        replen = apr_base64_encode_len(output.length) + 1;
-        reply = apr_pcalloc(req->pool, prefixlen + replen);
-        if (reply) {
-            memcpy(reply, mag_str_auth_type(auth_type), prefixlen - 1);
-            reply[prefixlen - 1] = ' ';
-            apr_base64_encode(&reply[prefixlen], output.value, output.length);
-            apr_table_add(req->err_headers_out, req_cfg->rep_proto, reply);
-        }
-    } else if (ret == HTTP_UNAUTHORIZED) {
-        if (send_auth_header) {
-            apr_table_add(req->err_headers_out,
-                          req_cfg->rep_proto, "Negotiate");
-            if (is_mech_allowed(desired_mechs, gss_mech_ntlmssp,
-                                cfg->gss_conn_ctx)) {
-                apr_table_add(req->err_headers_out, req_cfg->rep_proto,
-                              "NTLM");
-            }
-        }
-        if (cfg->use_basic_auth) {
-            apr_table_add(req->err_headers_out, req_cfg->rep_proto,
-                          apr_psprintf(req->pool, "Basic realm=\"%s\"",
-                                       ap_auth_name(req)));
-        }
-    }
-
-    if (ctx != GSS_C_NO_CONTEXT)
-        gss_delete_sec_context(&min, &ctx, GSS_C_NO_BUFFER);
-    gss_release_cred(&min, &acquired_cred);
-    gss_release_cred(&min, &delegated_cred);
-    gss_release_buffer(&min, &output);
-    gss_release_name(&min, &client);
     gss_release_buffer(&min, &name);
     gss_release_buffer(&min, &lname);
     return ret;
 }
-
 
 static void *mag_create_dir_config(apr_pool_t *p, char *dir)
 {
