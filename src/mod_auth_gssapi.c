@@ -772,6 +772,49 @@ done:
 }
 #endif
 
+static apr_status_t mag_oid_set_destroy(void *ptr)
+{
+    uint32_t min;
+    gss_OID_set set = (gss_OID_set)ptr;
+    (void)gss_release_oid_set(&min, &set);
+    return APR_SUCCESS;
+}
+
+static gss_OID_set mag_get_negotiate_mechs(apr_pool_t *p, gss_OID_set desired)
+{
+    gss_OID spnego_oid = discard_const(&gss_mech_spnego);
+    uint32_t maj, min;
+    int present = 0;
+
+    maj = gss_test_oid_set_member(&min, spnego_oid, desired, &present);
+    if (maj != GSS_S_COMPLETE) {
+        return GSS_C_NO_OID_SET;
+    }
+    if (present) {
+        return desired;
+    } else {
+        gss_OID_set set;
+        maj = gss_create_empty_oid_set(&min, &set);
+        if (maj != GSS_S_COMPLETE) {
+            return GSS_C_NO_OID_SET;
+        }
+        apr_pool_cleanup_register(p, (void *)set,
+                                  mag_oid_set_destroy,
+                                  apr_pool_cleanup_null);
+        maj = gss_add_oid_set_member(&min, spnego_oid, &set);
+        if (maj != GSS_S_COMPLETE) {
+            return GSS_C_NO_OID_SET;
+        }
+        for (int i = 0; i < desired->count; i++) {
+             maj = gss_add_oid_set_member(&min, &desired->elements[i], &set);
+            if (maj != GSS_S_COMPLETE) {
+                return GSS_C_NO_OID_SET;
+            }
+        }
+        return set;
+    }
+}
+
 static int mag_auth(request_rec *req)
 {
     const char *type;
@@ -810,7 +853,13 @@ static int mag_auth(request_rec *req)
 
     cfg = req_cfg->cfg;
 
-    desired_mechs = req_cfg->desired_mechs;
+    if ((req_cfg->desired_mechs == GSS_C_NO_OID_SET) ||
+        (req_cfg->desired_mechs->count == 0)) {
+        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
+                      "List of desired mechs is missing or empty, "
+                      "can't proceed!");
+        return HTTP_UNAUTHORIZED;
+    }
 
     /* implicit auth for subrequests if main auth already happened */
     if (!ap_is_initial_req(req) && req->main != NULL) {
@@ -906,6 +955,13 @@ static int mag_auth(request_rec *req)
         if (!parse_auth_header(req->pool, &auth_header, &input)) {
             goto done;
         }
+        desired_mechs = mag_get_negotiate_mechs(req->pool,
+                                                req_cfg->desired_mechs);
+        if (desired_mechs == GSS_C_NO_OID_SET) {
+            ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
+                          "Failed to get negotiate_mechs");
+            goto done;
+        }
         break;
     case AUTH_TYPE_BASIC:
         if (!cfg->use_basic_auth) {
@@ -951,6 +1007,11 @@ static int mag_auth(request_rec *req)
         }
 
         desired_mechs = discard_const(gss_mech_set_ntlmssp);
+        if (desired_mechs == GSS_C_NO_OID_SET) {
+            ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
+                          "No support for ntlmssp mech");
+            goto done;
+        }
         break;
 
     default:
@@ -1321,16 +1382,8 @@ static const char *mag_use_basic_auth(cmd_parms *parms, void *mconfig, int on)
 }
 #endif
 
-static apr_status_t mag_oid_set_destroy(void *ptr)
-{
-    uint32_t min;
-    gss_OID_set set = (gss_OID_set)ptr;
-    (void)gss_release_oid_set(&min, &set);
-    return APR_SUCCESS;
-}
-
 static bool mag_list_of_mechs(cmd_parms *parms, gss_OID_set *oidset,
-                              bool add_spnego, const char *w)
+                              const char *w)
 {
     gss_buffer_desc buf = { 0 };
     uint32_t maj, min;
@@ -1345,17 +1398,6 @@ static bool mag_list_of_mechs(cmd_parms *parms, gss_OID_set *oidset,
                          "gss_create_empty_oid_set() failed.");
             *oidset = GSS_C_NO_OID_SET;
             return false;
-        }
-        if (add_spnego) {
-            oid = discard_const(&gss_mech_spnego);
-            maj = gss_add_oid_set_member(&min, oid, &set);
-            if (maj != GSS_S_COMPLETE) {
-                ap_log_error(APLOG_MARK, APLOG_ERR, 0, parms->server,
-                             "gss_add_oid_set_member() failed.");
-                (void)gss_release_oid_set(&min, &set);
-                *oidset = GSS_C_NO_OID_SET;
-                return false;
-            }
         }
         /* register in the pool so it can be released once the server
          * winds down */
@@ -1401,7 +1443,7 @@ static const char *mag_allow_mech(cmd_parms *parms, void *mconfig,
 {
     struct mag_config *cfg = (struct mag_config *)mconfig;
 
-    if (!mag_list_of_mechs(parms, &cfg->allowed_mechs, true, w))
+    if (!mag_list_of_mechs(parms, &cfg->allowed_mechs, w))
         return "Failed to apply GssapiAllowedMech directive";
 
     return NULL;
@@ -1483,7 +1525,7 @@ static const char *mag_basic_auth_mechs(cmd_parms *parms, void *mconfig,
 {
     struct mag_config *cfg = (struct mag_config *)mconfig;
 
-    if (!mag_list_of_mechs(parms, &cfg->basic_mechs, false, w))
+    if (!mag_list_of_mechs(parms, &cfg->basic_mechs, w))
         return "Failed to apply GssapiBasicAuthMech directive";
 
     return NULL;
