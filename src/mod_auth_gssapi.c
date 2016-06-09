@@ -349,6 +349,68 @@ gss_OID_set mag_filter_unwanted_mechs(gss_OID_set src)
     return src;
 }
 
+static uint32_t mag_context_loop(uint32_t *min,
+                                 request_rec *req,
+                                 gss_cred_id_t init_cred,
+                                 gss_cred_id_t accept_cred,
+                                 gss_OID mech_type,
+                                 uint32_t req_lifetime,
+                                 gss_name_t *client,
+                                 uint32_t *lifetime,
+                                 gss_cred_id_t *delegated_cred)
+{
+    gss_ctx_id_t init_ctx = GSS_C_NO_CONTEXT;
+    gss_ctx_id_t accept_ctx = GSS_C_NO_CONTEXT;
+    gss_buffer_desc init_token = GSS_C_EMPTY_BUFFER;
+    gss_buffer_desc accept_token = GSS_C_EMPTY_BUFFER;
+    gss_name_t accept_name = GSS_C_NO_NAME;
+    uint32_t maj, tmin;
+
+    maj = gss_inquire_cred_by_mech(min, accept_cred, mech_type, &accept_name,
+                                   NULL, NULL, NULL);
+    if (GSS_ERROR(maj)) {
+        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
+                      "%s", mag_error(req, "gss_inquired_cred_by_mech() "
+                                      "failed", maj, *min));
+        return maj;
+    }
+
+    do {
+        /* output and input are inverted here, this is intentional */
+        maj = gss_init_sec_context(min, init_cred, &init_ctx,
+                                   accept_name, mech_type, GSS_C_DELEG_FLAG,
+                                   req_lifetime, GSS_C_NO_CHANNEL_BINDINGS,
+                                   &accept_token, NULL, &init_token, NULL,
+                                   NULL);
+        if (GSS_ERROR(maj)) {
+            ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req, "%s",
+                          mag_error(req, "gss_init_sec_context()", maj, *min));
+            goto done;
+        }
+        gss_release_buffer(&tmin, &accept_token);
+
+        maj = gss_accept_sec_context(min, &accept_ctx, accept_cred,
+                                     &init_token, GSS_C_NO_CHANNEL_BINDINGS,
+                                     client, NULL, &accept_token, NULL,
+                                     lifetime, delegated_cred);
+        if (GSS_ERROR(maj)) {
+            ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req, "%s",
+                          mag_error(req, "gss_accept_sec_context()",
+                                    maj, *min));
+            goto done;
+        }
+        gss_release_buffer(&tmin, &init_token);
+    } while (maj == GSS_S_CONTINUE_NEEDED);
+
+done:
+    gss_release_name(&tmin, &accept_name);
+    gss_release_buffer(&tmin, &init_token);
+    gss_release_buffer(&tmin, &accept_token);
+    gss_delete_sec_context(&tmin, &init_ctx, GSS_C_NO_BUFFER);
+    gss_delete_sec_context(&tmin, &accept_ctx, GSS_C_NO_BUFFER);
+    return maj;
+}
+
 static bool mag_auth_basic(request_rec *req,
                            struct mag_config *cfg,
                            gss_buffer_desc ba_user,
@@ -366,16 +428,10 @@ static bool mag_auth_basic(request_rec *req,
 #endif
     gss_name_t user = GSS_C_NO_NAME;
     gss_cred_id_t user_cred = GSS_C_NO_CREDENTIAL;
-    gss_ctx_id_t user_ctx = GSS_C_NO_CONTEXT;
-    gss_name_t server = GSS_C_NO_NAME;
     gss_cred_id_t server_cred = GSS_C_NO_CREDENTIAL;
-    gss_ctx_id_t server_ctx = GSS_C_NO_CONTEXT;
-    gss_buffer_desc input = GSS_C_EMPTY_BUFFER;
-    gss_buffer_desc output = GSS_C_EMPTY_BUFFER;
     gss_OID_set allowed_mechs;
     gss_OID_set filtered_mechs;
     gss_OID_set actual_mechs = GSS_C_NO_OID_SET;
-    uint32_t init_flags = 0;
     uint32_t maj, min;
     int present = 0;
     bool ret = false;
@@ -487,56 +543,10 @@ static bool mag_auth_basic(request_rec *req,
         goto done;
     }
 
-#ifdef HAVE_CRED_STORE
-    if (cfg->deleg_ccache_dir) {
-        /* delegate ourselves credentials so we store them as requested */
-        init_flags |= GSS_C_DELEG_FLAG;
-    }
-#endif
-
     for (int i = 0; i < actual_mechs->count; i++) {
-
-        /* free these if looping */
-        gss_release_buffer(&min, &output);
-        gss_release_buffer(&min, &input);
-        gss_release_name(&min, &server);
-
-        maj = gss_inquire_cred_by_mech(&min, server_cred,
-                                       &actual_mechs->elements[i],
-                                       &server, NULL, NULL, NULL);
-        if (GSS_ERROR(maj)) {
-            ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
-                          "%s", mag_error(req, "gss_inquired_cred_by_mech() "
-                                          "failed", maj, min));
-            continue;
-        }
-
-        do {
-            /* output and input are inverted here, this is intentional */
-            maj = gss_init_sec_context(&min, user_cred, &user_ctx, server,
-                                       &actual_mechs->elements[i], init_flags,
-                                       300, GSS_C_NO_CHANNEL_BINDINGS, &output,
-                                       NULL, &input, NULL, NULL);
-            if (GSS_ERROR(maj)) {
-                ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
-                              "%s", mag_error(req, "gss_init_sec_context() "
-                                              "failed", maj, min));
-                break;
-            }
-            gss_release_buffer(&min, &output);
-            maj = gss_accept_sec_context(&min, &server_ctx, server_cred,
-                                         &input, GSS_C_NO_CHANNEL_BINDINGS,
-                                         client, mech_type, &output, NULL,
-                                         vtime, delegated_cred);
-            if (GSS_ERROR(maj)) {
-                ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
-                              "%s", mag_error(req, "gss_accept_sec_context()"
-                                              " failed", maj, min));
-                break;
-            }
-            gss_release_buffer(&min, &input);
-        } while (maj == GSS_S_CONTINUE_NEEDED);
-
+        maj = mag_context_loop(&min, req, user_cred, server_cred,
+                               &actual_mechs->elements[i], 300, client, vtime,
+                               delegated_cred);
         if (maj == GSS_S_COMPLETE) {
             ret = true;
             break;
@@ -544,14 +554,9 @@ static bool mag_auth_basic(request_rec *req,
     }
 
 done:
-    gss_release_buffer(&min, &output);
-    gss_release_buffer(&min, &input);
-    gss_release_name(&min, &server);
-    gss_delete_sec_context(&min, &server_ctx, GSS_C_NO_BUFFER);
     gss_release_cred(&min, &server_cred);
     gss_release_name(&min, &user);
     gss_release_cred(&min, &user_cred);
-    gss_delete_sec_context(&min, &user_ctx, GSS_C_NO_BUFFER);
     gss_release_oid_set(&min, &actual_mechs);
     gss_release_oid_set(&min, &filtered_mechs);
 #ifdef HAVE_GSS_KRB5_CCACHE_NAME
@@ -638,13 +643,9 @@ static apr_status_t mag_s4u2self(request_rec *req)
     gss_name_t user = GSS_C_NO_NAME;
     gss_name_t client = GSS_C_NO_NAME;
     gss_cred_id_t server_cred = GSS_C_NO_CREDENTIAL;
-    gss_name_t server_name = GSS_C_NO_NAME;
     gss_cred_id_t delegated_cred = GSS_C_NO_CREDENTIAL;
-    gss_ctx_id_t initiator_context = GSS_C_NO_CONTEXT;
-    gss_buffer_desc init_token = GSS_C_EMPTY_BUFFER;
-    gss_ctx_id_t acceptor_context = GSS_C_NO_CONTEXT;
-    gss_buffer_desc accept_token = GSS_C_EMPTY_BUFFER;
     struct mag_conn *mc = NULL;
+    uint32_t vtime;
     uint32_t maj, min;
 
     req_cfg = mag_init_cfg(req);
@@ -677,15 +678,6 @@ static apr_status_t mag_s4u2self(request_rec *req)
         goto done;
     }
 
-    maj = gss_inquire_cred(&min, server_cred, &server_name, NULL, NULL, NULL);
-    if (GSS_ERROR(maj)) {
-        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
-                      "Failed to inquire server's creds: %s",
-                      mag_error(req, "gss_inquired_cred()",
-                                maj, min));
-        goto done;
-    }
-
     user_name.value = req->user;
     user_name.length = strlen(user_name.value);
     maj = gss_import_name(&min, &user_name, GSS_C_NT_USER_NAME, &user);
@@ -713,36 +705,11 @@ static apr_status_t mag_s4u2self(request_rec *req)
     /* the following exchange is needed to decrypt the ticket and get named
      * attributes as well as check if the ticket is forwardable when
      * delegated credentials are requested */
-    do {
-        /* output and input are inverted here, this is intentional */
-
-        /* now acquire credentials for impersonated user to self */
-        maj = gss_init_sec_context(&min, user_cred, &initiator_context,
-                                   server_name, discard_const(gss_mech_krb5),
-                                   GSS_C_REPLAY_FLAG | GSS_C_SEQUENCE_FLAG,
-                                   GSS_C_INDEFINITE,
-                                   GSS_C_NO_CHANNEL_BINDINGS, &accept_token,
-                                   NULL, &init_token, NULL, NULL);
-        if (GSS_ERROR(maj)) {
-            ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req, "%s",
-                          mag_error(req, "gss_init_sec_context()", maj, min));
-            goto done;
-        }
-        gss_release_buffer(&min, &accept_token);
-
-        /* accept context to be able to store delegated credentials */
-        maj = gss_accept_sec_context(&min, &acceptor_context, server_cred,
-                                     &init_token, GSS_C_NO_CHANNEL_BINDINGS,
-                                     &client, NULL, &accept_token,
-                                     NULL, NULL, &delegated_cred);
-        if (GSS_ERROR(maj)) {
-            ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req, "%s",
-                          mag_error(req, "gss_accept_sec_context()",
-                                    maj, min));
-            goto done;
-        }
-        gss_release_buffer(&min, &init_token);
-    } while (maj == GSS_S_CONTINUE_NEEDED);
+    maj = mag_context_loop(&min, req, user_cred, server_cred,
+                           discard_const(gss_mech_krb5), GSS_C_INDEFINITE,
+                           &client, &vtime, &delegated_cred);
+    if (GSS_ERROR(maj))
+        goto done;
 
     if (cfg->deleg_ccache_dir && delegated_cred == GSS_C_NO_CREDENTIAL) {
         ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
@@ -754,7 +721,7 @@ static apr_status_t mag_s4u2self(request_rec *req)
     mc = mag_new_conn_ctx(req->pool);
     mc->auth_type = AUTH_TYPE_IMPERSONATE;
 
-    ret = mag_complete(req_cfg, mc, client, mech_type, GSS_C_INDEFINITE, delegated_cred);
+    ret = mag_complete(req_cfg, mc, client, mech_type, vtime, delegated_cred);
     if (ret != OK) ret = DECLINED;
 
 done:
@@ -762,12 +729,7 @@ done:
     gss_release_name(&min, &user);
     gss_release_name(&min, &client);
     gss_release_cred(&min, &server_cred);
-    gss_release_name(&min, &server_name);
     gss_release_cred(&min, &delegated_cred);
-    gss_delete_sec_context(&min, &initiator_context, GSS_C_NO_BUFFER);
-    gss_release_buffer(&min, &init_token);
-    gss_delete_sec_context(&min, &acceptor_context, GSS_C_NO_BUFFER);
-    gss_release_buffer(&min, &accept_token);
     return ret;
 }
 #endif
