@@ -63,6 +63,8 @@ MAGASN1dir = .
 noinst_LTLIBRARIES = libmagasn1.la
 libmagasn1_la_SOURCES = $(ASN1C_SOURCES) $(MAGASN1_SOURCES)
 
+EXTRA_DIST = session.asn1
+
 regenerate:
 	asn1c -fskeletons-copy -fnative-types session.asn1
 	rm -f converter-sample.c Makefile.am.sample
