@@ -1,5 +1,6 @@
 AC_PREREQ([2.69])
-AC_INIT([mod_auth_gssapi], [1.3.2], [simo@redhat.com])
+m4_include([version.m4])
+AC_INIT([mod_auth_gssapi], VERSION_NUMBER, [simo@redhat.com])
 AC_CONFIG_SRCDIR([src/mod_auth_gssapi.c])
 AM_INIT_AUTOMAKE([-Wall foreign subdir-objects tar-pax])
 m4_ifdef([AM_PROG_AR], [AM_PROG_AR])
