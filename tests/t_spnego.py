@@ -12,3 +12,7 @@ if __name__ == '__main__':
     r = sess.get(url, auth=HTTPKerberosAuth())
     if r.status_code != 200:
         raise ValueError('Spnego failed')
+
+    c = r.cookies
+    if not c.get("gssapi_session").startswith("MagBearerToken="):
+        raise ValueError('gssapi_session not set')
