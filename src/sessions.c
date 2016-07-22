@@ -236,8 +236,13 @@ void mag_attempt_session(struct mag_req_cfg *cfg, struct mag_conn *mc)
                              (const char *)mc->basic_hash.value,
                              mc->basic_hash.length) != 0)
         goto done;
-    if (OCTET_STRING_fromString(&gsessdata.ccname, mc->ccname) != 0)
+
+    /* NULL ccname here just means default ccache */
+    if (mc->ccname &&
+        OCTET_STRING_fromString(&gsessdata.ccname, mc->ccname) != 0) {
         goto done;
+    }
+
     ret = encode_GSSSessionData(req->pool, &gsessdata,
                                 &plainbuf.value, &plainbuf.length);
     if (ret == false) {
