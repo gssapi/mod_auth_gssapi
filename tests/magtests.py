@@ -12,6 +12,10 @@ import subprocess
 import sys
 import time
 
+# check that we can import requests (for use in test scripts)
+import requests, requests_kerberos
+del(requests)
+del(requests_kerberos)
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Mod Auth GSSAPI Tests Environment')
