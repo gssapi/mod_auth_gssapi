@@ -1,6 +1,6 @@
 AC_PREREQ([2.69])
 m4_include([version.m4])
-AC_INIT([mod_auth_gssapi], VERSION_NUMBER, [simo@redhat.com])
+AC_INIT([mod_auth_gssapi],[VERSION_NUMBER],[simo@redhat.com])
 AC_CONFIG_SRCDIR([src/mod_auth_gssapi.c])
 AM_INIT_AUTOMAKE([-Wall foreign subdir-objects tar-pax])
 m4_ifdef([AM_PROG_AR], [AM_PROG_AR])
@@ -10,11 +10,11 @@ AC_CONFIG_HEADERS([src/config.h])
 # Checks for programs.
 AC_PROG_CC_STDC
 
-AC_PROG_LIBTOOL
+LT_INIT
 AC_SUBST(INCLTDL)
 AC_SUBST(LIBLTDL)
 
-AM_CONDITIONAL([HAVE_GCC], [test "$ac_cv_prog_gcc" = yes])
+AM_CONDITIONAL([HAVE_GCC], [test "$ac_cv_c_compiler_gnu" = yes])
 
 AC_CHECK_HEADERS([stdint.h])
 
@@ -27,7 +27,7 @@ AC_TYPE_UINT32_T
 AC_CHECK_FUNCS([strcasecmp])
 
 AC_ARG_WITH([apxs],
-            [AC_HELP_STRING([--with-apxs=PATH/NAME], [path to the apxs binary [[apxs]]])],
+            [AS_HELP_STRING([--with-apxs=PATH/NAME],[path to the apxs binary [[apxs]]])],
             [AC_SUBST(APXS, $with_apxs)],
             [AC_PATH_PROGS(APXS, [apxs2 apxs])])
 AS_IF([test "x${APXS}" != "x" -a -x "${APXS}"],
@@ -37,7 +37,7 @@ AS_IF([test "x${APXS}" != "x" -a -x "${APXS}"],
       [AC_MSG_FAILURE(["apxs not found. Use --with-apxs"])])
 
 AC_ARG_WITH([apr],
-            [AC_HELP_STRING([--with-apr=PATH/NAME], [path to the apr binary [[apr]]])],
+            [AS_HELP_STRING([--with-apr=PATH/NAME],[path to the apr binary [[apr]]])],
             [AC_SUBST(APR, $with_apr)],
             [AC_PATH_PROGS(APR, [apr-1-config])])
 AS_IF([test "x${APR}" != "x" -a -x "${APR}"],
