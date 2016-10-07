@@ -612,6 +612,10 @@ struct mag_req_cfg *mag_init_cfg(request_rec *req)
     return req_cfg;
 }
 
+static int mag_complete(struct mag_req_cfg *req_cfg, struct mag_conn *mc,
+                        gss_name_t client, gss_OID mech_type,
+                        uint32_t vtime, gss_cred_id_t delegated_cred);
+
 #ifdef HAVE_CRED_STORE
 static bool use_s4u2proxy(struct mag_req_cfg *req_cfg) {
     if (req_cfg->cfg->use_s4u2proxy) {
@@ -625,10 +629,6 @@ static bool use_s4u2proxy(struct mag_req_cfg *req_cfg) {
     }
     return false;
 }
-
-static int mag_complete(struct mag_req_cfg *req_cfg, struct mag_conn *mc,
-                        gss_name_t client, gss_OID mech_type,
-                        uint32_t vtime, gss_cred_id_t delegated_cred);
 
 static apr_status_t mag_s4u2self(request_rec *req)
 {
