@@ -1049,7 +1049,7 @@ static int mag_auth(request_rec *req)
     ret = mag_complete(req_cfg, mc, client, mech_type, vtime, delegated_cred);
 
     if (ret == OK && req_cfg->send_persist)
-        apr_table_set(req->headers_out, "Persistent-Auth",
+        apr_table_set(req->err_headers_out, "Persistent-Auth",
             cfg->gss_conn_ctx ? "true" : "false");
 
 done:
