@@ -36,6 +36,10 @@
 #  include <gssapi/gssapi_ntlmssp.h>
 #endif
 
+#include <ctype.h>
+#include <pwd.h>
+#include <grp.h>
+
 #include "crypto.h"
 #include "sessions.h"
 #include "environ.h"
@@ -69,6 +73,9 @@ struct mag_config {
 #ifdef HAVE_CRED_STORE
     bool use_s4u2proxy;
     char *deleg_ccache_dir;
+    mode_t deleg_ccache_mode;
+    uid_t deleg_ccache_uid;
+    gid_t deleg_ccache_gid;
     gss_key_value_set_desc *cred_store;
     bool deleg_ccache_unique;;
     bool s4u2self;

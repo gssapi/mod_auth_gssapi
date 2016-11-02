@@ -243,18 +243,44 @@ static void mag_set_name_attributes(request_rec *req, struct mag_conn *mc)
     }
 }
 
-static void mag_set_KRB5CCNAME(request_rec *req, const char *dir,
+static void mag_set_KRB5CCNAME(request_rec *req, struct mag_config *cfg,
                                const char *ccname)
 {
     apr_status_t status;
-    apr_finfo_t finfo;
+    apr_int32_t wanted = APR_FINFO_MIN | APR_FINFO_OWNER | APR_FINFO_PROT;
+    apr_finfo_t finfo = { 0 };
     char *path;
     char *value;
 
-    path = apr_psprintf(req->pool, "%s/%s", dir, ccname);
+    path = apr_psprintf(req->pool, "%s/%s", cfg->deleg_ccache_dir, ccname);
 
-    status = apr_stat(&finfo, path, APR_FINFO_MIN, req->pool);
-    if (status != APR_SUCCESS && status != APR_INCOMPLETE) {
+    status = apr_stat(&finfo, path, wanted, req->pool);
+    if (status == APR_SUCCESS) {
+        if ((cfg->deleg_ccache_mode != 0) &&
+            (finfo.protection != cfg->deleg_ccache_mode)) {
+            status = apr_file_perms_set(path, cfg->deleg_ccache_mode);
+            if (status != APR_SUCCESS)
+                ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, req,
+                              "failed to set perms (%o) on file (%s)!",
+                              cfg->deleg_ccache_mode, path);
+        }
+        if ((cfg->deleg_ccache_uid != 0) &&
+            (finfo.user != cfg->deleg_ccache_uid)) {
+            status = lchown(path, cfg->deleg_ccache_uid, -1);
+            if (status != 0)
+                ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, req,
+                              "failed to set user (%u) on file (%s)!",
+                              cfg->deleg_ccache_uid, path);
+        }
+        if ((cfg->deleg_ccache_gid != 0) &&
+            (finfo.group != cfg->deleg_ccache_gid)) {
+            status = lchown(path, -1, cfg->deleg_ccache_gid);
+            if (status != 0)
+                ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, req,
+                              "failed to set group (%u) on file (%s)!",
+                              cfg->deleg_ccache_gid, path);
+        }
+    } else {
         /* set the file cache anyway, but warn */
         ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, req,
                       "KRB5CCNAME file (%s) lookup failed!", path);
@@ -282,7 +308,7 @@ void mag_set_req_data(request_rec *req,
 
 #ifdef HAVE_CRED_STORE
     if (cfg->deleg_ccache_dir && mc->delegated && mc->ccname) {
-        mag_set_KRB5CCNAME(req, cfg->deleg_ccache_dir, mc->ccname);
+        mag_set_KRB5CCNAME(req, cfg, mc->ccname);
     }
 #endif
 }
