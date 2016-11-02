@@ -1332,6 +1332,87 @@ static const char *mag_deleg_ccache_dir(cmd_parms *parms, void *mconfig,
 
     return NULL;
 }
+
+#define CCMODE "mode:"
+#define CCUID "uid:"
+#define CCGID "gid:"
+#define NSS_BUF_LEN 2048 /* just use a uid/gid number if not big enough */
+static const char *mag_deleg_ccache_perms(cmd_parms *parms, void *mconfig,
+                                          const char *w)
+{
+    struct mag_config *cfg = (struct mag_config *)mconfig;
+
+    if (strncmp(w, CCMODE, sizeof(CCMODE) - 1) == 0) {
+        const char *p = w + sizeof(CCMODE) -1;
+        errno = 0;
+        /* mode is traditionally represented in octal, but the actual
+         * permission bit are using the 3 least significant bit of each quartet
+         * so effectively if we read an octal number as hex we get the correct
+         * mode bits */
+        cfg->deleg_ccache_mode = strtol(p, NULL, 16);
+        if (errno != 0) {
+            ap_log_error(APLOG_MARK, APLOG_ERR, 0, parms->server,
+                         "Invalid GssapiDelegCcachePerms mode value [%s]", p);
+            /* reset to the default */
+            cfg->deleg_ccache_mode = 0;
+        }
+    } else if (strncmp(w, CCUID, sizeof(CCUID) - 1) == 0) {
+        const char *p = w + sizeof(CCUID) - 1;
+        errno = 0;
+        if (isdigit(*p)) {
+            char *endptr;
+            cfg->deleg_ccache_uid = strtol(p, &endptr, 0);
+            if (errno != 0 || endptr != '\0') {
+                ap_log_error(APLOG_MARK, APLOG_ERR, 0, parms->server,
+                             "Invalid GssapiDelegCcachePerms uid value [%s]",
+                             p);
+                /* reset to the default */
+                cfg->deleg_ccache_uid = 0;
+            }
+        } else {
+            struct passwd pwd, *user;
+            char buf[NSS_BUF_LEN];
+            int ret = getpwnam_r(p, &pwd, buf, NSS_BUF_LEN, &user);
+            if ((ret != 0) || user != &pwd) {
+                ap_log_error(APLOG_MARK, APLOG_ERR, 0, parms->server,
+                             "Invalid GssapiDelegCcachePerms uid value [%s]",
+                             p);
+            } else {
+                cfg->deleg_ccache_uid = user->pw_uid;
+            }
+        }
+    } else if (strncmp(w, CCGID, sizeof(CCGID) - 1) == 0) {
+        const char *p = w + sizeof(CCGID) - 1;
+        errno = 0;
+        if (isdigit(*p)) {
+            char *endptr;
+            cfg->deleg_ccache_gid = strtol(p, &endptr, 0);
+            if (errno != 0 || endptr != '\0') {
+                ap_log_error(APLOG_MARK, APLOG_ERR, 0, parms->server,
+                             "Invalid GssapiDelegCcachePerms gid value [%s]",
+                             p);
+                /* reset to the default */
+                cfg->deleg_ccache_gid = 0;
+            }
+        } else {
+            struct group grp, *group;
+            char buf[NSS_BUF_LEN];
+            int ret = getgrnam_r(p, &grp, buf, NSS_BUF_LEN, &group);
+            if ((ret != 0) || group != &grp) {
+                ap_log_error(APLOG_MARK, APLOG_ERR, 0, parms->server,
+                             "Invalid GssapiDelegCcachePerms gid value [%s]",
+                             p);
+            } else {
+                cfg->deleg_ccache_gid = group->gr_gid;
+            }
+        }
+    } else {
+        ap_log_error(APLOG_MARK, APLOG_ERR, 0, parms->server,
+                     "Invalid GssapiDelegCcachePerms directive [%s]", w);
+    }
+
+    return NULL;
+}
 #endif
 
 #ifdef HAVE_GSS_ACQUIRE_CRED_WITH_PASSWORD
@@ -1541,6 +1622,8 @@ static const command_rec mag_commands[] = {
                     "Credential Store"),
     AP_INIT_RAW_ARGS("GssapiDelegCcacheDir", mag_deleg_ccache_dir, NULL,
                      OR_AUTHCFG, "Directory to store delegated credentials"),
+    AP_INIT_ITERATE("GssapiDelegCcachePerms", mag_deleg_ccache_perms, NULL,
+                     OR_AUTHCFG, "Permissions to assign to Ccache files"),
     AP_INIT_FLAG("GssapiDelegCcacheUnique", mag_deleg_ccache_unique, NULL,
                  OR_AUTHCFG, "Use unique ccaches for delgation"),
     AP_INIT_FLAG("GssapiImpersonate", ap_set_flag_slot,
