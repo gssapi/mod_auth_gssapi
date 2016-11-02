@@ -257,7 +257,6 @@ def kinit_user(testdir, kdcenv):
         kinit.wait()
         if kinit.returncode != 0:
             raise ValueError('kinit failed')
-
     return testenv
 
 
@@ -388,6 +387,8 @@ if __name__ == '__main__':
         keysenv = setup_keys(testdir, kdcenv)
         testenv = kinit_user(testdir, kdcenv)
 
+        testenv['DELEGCCACHE'] = os.path.join(testdir, 'httpd',
+                                              USR_NAME + '@' + TESTREALM)
         test_spnego_auth(testdir, testenv, testlog)
 
         test_spnego_negotiate_once(testdir, testenv, testlog)
