@@ -326,3 +326,35 @@ delegation, for example with the option +ok_to_auth_as_delegate.
 
 - **Enable with:** GssapiImpersonate On
 - **Default:** GssapiImpersonate Off
+
+
+### GssapiDelegCcachePerms
+
+This option is used to set alternative ownership and permission for delegated
+ccache files stored in the GssapiDelegCcacheDir location. It is a multivalue
+configuration directive that can accept the following three settings:
+- mode
+- uid
+- gid
+If a setting is not present the relative file property will not be modified and
+the default owners and/or mode will be retained.
+
+#### mode
+    This option allows to set the file mode, the format used is a numeric mode
+    with the same semantics of the chmod unix command for mapping numbers to
+    permissions.
+
+#### uid
+    A user id number or name, an attempt to change the user owner of the file
+    to the uid number specified will be made. If a user name has been
+    specified, it will be resolved at startup time and the user's id number
+    stored internally for all subsequent operations.
+
+#### gid
+    A group id number or name, an attempt to change the group owner of the
+    file to the gid number specified will be made. If a group name has been
+    specified, it will be resolved at startup time and the group's id number
+    stored internally for all subsequent operations.
+
+#### Example
+    GssapiDelegCcachePerms mode:0660 gid:webuiworkers
