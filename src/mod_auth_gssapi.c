@@ -1238,34 +1238,105 @@ static const char *mag_deleg_ccache_unique(cmd_parms *parms, void *mconfig,
 
 #endif
 
+#define SESS_KEYS_TOT_LEN 32
+
+static void create_sess_key_file(cmd_parms *parms, const char *name)
+{
+    apr_status_t ret;
+    apr_file_t *fd = NULL;
+    unsigned char keys[SESS_KEYS_TOT_LEN];
+    apr_size_t bw;
+
+    ret = apr_file_open(&fd, name,
+                        APR_FOPEN_CREATE | APR_FOPEN_WRITE | APR_FOPEN_EXCL,
+                        APR_FPROT_UREAD | APR_FPROT_UWRITE, parms->temp_pool);
+    if (ret != APR_SUCCESS) {
+        char err[256];
+        apr_strerror(ret, err, sizeof(err));
+        ap_log_error(APLOG_MARK, APLOG_ERR, 0, parms->server,
+                     "Failed to create key file %s: %s", name, err);
+        return;
+    }
+    ret = apr_generate_random_bytes(keys, SESS_KEYS_TOT_LEN);
+    if (ret != OK) {
+        ap_log_error(APLOG_MARK, APLOG_ERR, 0, parms->server,
+                     "Failed to generate random sealing key!");
+        ret = APR_INCOMPLETE;
+        goto done;
+    }
+    ret = apr_file_write_full(fd, keys, SESS_KEYS_TOT_LEN, &bw);
+    if ((ret != APR_SUCCESS) || (bw != SESS_KEYS_TOT_LEN)) {
+        char err[256];
+        apr_strerror(ret, err, sizeof(err));
+        ap_log_error(APLOG_MARK, APLOG_ERR, 0, parms->server,
+                     "Failed to store key in %s: %s", name, err);
+        ret = APR_INCOMPLETE;
+        goto done;
+    }
+done:
+    apr_file_close(fd);
+    if (ret != APR_SUCCESS) apr_file_remove(name, parms->temp_pool);
+}
+
 static const char *mag_sess_key(cmd_parms *parms, void *mconfig, const char *w)
 {
     struct mag_config *cfg = (struct mag_config *)mconfig;
     struct databuf keys;
     unsigned char *val;
     apr_status_t rc;
-    const char *k;
     int l;
 
-    if (strncmp(w, "key:", 4) != 0) {
+    if (strncmp(w, "key:", 4) == 0) {
+        const char *k = w + 4;
+
+        l = apr_base64_decode_len(k);
+        val = apr_palloc(parms->temp_pool, l);
+
+        keys.length = (int)apr_base64_decode_binary(val, k);
+        keys.value = (unsigned char *)val;
+
+        if (keys.length != SESS_KEYS_TOT_LEN) {
+            ap_log_error(APLOG_MARK, APLOG_ERR, 0, parms->server,
+                         "Invalid key length, expected 32 got %d",
+                         keys.length);
+            return NULL;
+        }
+    } else if (strncmp(w, "file:", 5) == 0) {
+        apr_status_t ret;
+        apr_file_t *fd = NULL;
+        apr_int32_t ronly = APR_FOPEN_READ;
+        const char *fname;
+
+        keys.length = SESS_KEYS_TOT_LEN;
+        keys.value = apr_palloc(parms->temp_pool, keys.length);
+
+        fname = w + 5;
+
+        ret = apr_file_open(&fd, fname, ronly, 0, parms->temp_pool);
+        if (APR_STATUS_IS_ENOENT(ret)) {
+            create_sess_key_file(parms, fname);
+
+            ret = apr_file_open(&fd, fname, ronly, 0, parms->temp_pool);
+        }
+        if (ret == APR_SUCCESS) {
+            apr_size_t br;
+            ret = apr_file_read_full(fd, keys.value, keys.length, &br);
+            apr_file_close(fd);
+            if ((ret != APR_SUCCESS) || (br != keys.length)) {
+                ap_log_error(APLOG_MARK, APLOG_ERR, 0, parms->server,
+                             "Failed to read sealing key from %s!", fname);
+                return NULL;
+            }
+        } else {
+            ap_log_error(APLOG_MARK, APLOG_ERR, 0, parms->server,
+                         "Failed to open key file %s", fname);
+            return NULL;
+        }
+    } else {
         ap_log_error(APLOG_MARK, APLOG_ERR, 0, parms->server,
-                     "Invalid key format, expected prefix 'key:'");
+                     "Invalid key format, unexpected prefix in %s'", w);
         return NULL;
     }
-    k = w + 4;
-
-    l = apr_base64_decode_len(k);
-    val = apr_palloc(parms->temp_pool, l);
-
-    keys.length = (int)apr_base64_decode_binary(val, k);
-    keys.value = (unsigned char *)val;
-
-    if (keys.length != 32) {
-        ap_log_error(APLOG_MARK, APLOG_ERR, 0, parms->server,
-                     "Invalid key length, expected 32 got %d", keys.length);
-        return NULL;
-    }
-
     rc = SEAL_KEY_CREATE(cfg->pool, &cfg->mag_skey, &keys);
     if (rc != OK) {
         ap_log_error(APLOG_MARK, APLOG_ERR, 0, parms->server,

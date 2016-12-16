@@ -144,10 +144,21 @@ admin can choose to install a permanent key in the configuration so that
 session data remain accessible after a restart or by multiple servers
 sharing the same key.
 
-The key must be a base64 encoded raw key of 32 bytes of length.
+Two schemes to read persistent keys are provided, 'key' and 'file'.
 
-#### Example
+- 'key'
+    A key is read from the configuration directive.
+    The key must be a base64 encoded raw key of 32 bytes of length.
+
+- 'file'
+    A file on the file system is used to store the key. If the file does not
+    exists one is created with a randomly generated key during the first
+    execution.
+
+
+#### Examples
     GssapiSessionKey key:VGhpcyBpcyBhIDMyIGJ5dGUgbG9uZyBzZWNyZXQhISE=
+    GssapiSessionKey file:/var/lib/httpd/secrets/session.key
 
 
 ### GssapiCredStore
