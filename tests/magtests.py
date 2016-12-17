@@ -306,6 +306,24 @@ def test_spnego_auth(testdir, testenv, testlog):
             sys.stderr.write('SPNEGO No Auth: SUCCESS\n')
 
 
+def test_spnego_rewrite(testdir, testenv, testlog):
+
+    spnego_rewrite_dir = os.path.join(testdir, 'httpd', 'html',
+                                          'spnego_rewrite')
+    os.mkdir(spnego_rewrite_dir)
+    shutil.copy('tests/index.html', spnego_rewrite_dir)
+
+    with (open(testlog, 'a')) as logfile:
+        spnego = subprocess.Popen(["tests/t_spnego_rewrite.py"],
+                                  stdout=logfile, stderr=logfile,
+                                  env=testenv, preexec_fn=os.setsid)
+        spnego.wait()
+        if spnego.returncode != 0:
+            sys.stderr.write('SPNEGO Rewrite: FAILED\n')
+        else:
+            sys.stderr.write('SPNEGO Rewrite: SUCCESS\n')
+
+
 def test_spnego_negotiate_once(testdir, testenv, testlog):
 
     spnego_negotiate_once_dir = os.path.join(testdir, 'httpd', 'html',
@@ -399,6 +417,9 @@ if __name__ == '__main__':
         testenv['DELEGCCACHE'] = os.path.join(testdir, 'httpd',
                                               USR_NAME + '@' + TESTREALM)
         test_spnego_auth(testdir, testenv, testlog)
+
+        testenv['MAG_GSS_NAME'] = USR_NAME + '@' + TESTREALM
+        test_spnego_rewrite(testdir, testenv, testlog)
 
         test_spnego_negotiate_once(testdir, testenv, testlog)
 

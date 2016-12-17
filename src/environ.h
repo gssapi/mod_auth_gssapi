@@ -8,6 +8,8 @@ void mag_get_name_attributes(request_rec *req,
                              gss_name_t name,
                              struct mag_conn *mc);
 
+void mag_export_req_env(request_rec *req, apr_table_t *env);
+
 void mag_set_req_data(request_rec *req,
                       struct mag_config *cfg,
                       struct mag_conn *mc);

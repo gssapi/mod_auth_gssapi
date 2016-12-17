@@ -52,6 +52,8 @@
 #  endif
 #endif
 
+extern module AP_MODULE_DECLARE_DATA auth_gssapi_module;
+
 struct mag_na_map {
     char *env_name;
     char *attr_name;
@@ -77,7 +79,7 @@ struct mag_config {
     uid_t deleg_ccache_uid;
     gid_t deleg_ccache_gid;
     gss_key_value_set_desc *cred_store;
-    bool deleg_ccache_unique;;
+    bool deleg_ccache_unique;
     bool s4u2self;
 #endif
     struct seal_key *mag_skey;
@@ -124,6 +126,7 @@ struct mag_conn {
     int na_count;
     struct mag_attr *name_attributes;
     const char *ccname;
+    apr_table_t *env;
 };
 
 #define discard_const(ptr) ((void *)((uintptr_t)(ptr)))
