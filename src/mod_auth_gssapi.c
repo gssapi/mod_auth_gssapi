@@ -107,7 +107,10 @@ struct mag_conn *mag_new_conn_ctx(apr_pool_t *pool)
     struct mag_conn *mc;
 
     mc = apr_pcalloc(pool, sizeof(struct mag_conn));
+
     apr_pool_create(&mc->pool, pool);
+    mc->env = apr_table_make(mc->pool, 1);
+
     /* register the context in the memory pool, so it can be freed
      * when the connection/request is terminated */
     apr_pool_cleanup_register(mc->pool, (void *)mc,
@@ -124,6 +127,7 @@ static void mag_conn_clear(struct mag_conn *mc)
     temp = mc->pool;
     memset(mc, 0, sizeof(struct mag_conn));
     mc->pool = temp;
+    mc->env = apr_table_make(mc->pool, 1);
 }
 
 static bool mag_conn_is_https(conn_rec *c)
@@ -823,20 +827,45 @@ static int mag_auth(request_rec *req)
         return HTTP_UNAUTHORIZED;
     }
 
+    ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, req,
+                  "URI: %s, %s main, %s prev", req->uri ?: "no-uri",
+                  req->main ? "with" : "no", req->prev ? "with" : "no");
+
     /* implicit auth for subrequests if main auth already happened */
-    if (!ap_is_initial_req(req) && req->main != NULL) {
-        type = ap_auth_type(req->main);
+    if (!ap_is_initial_req(req)) {
+        request_rec *main_req = req;
+
+        /* Not initial means either a subrequest or an internal redirect */
+        while (!ap_is_initial_req(main_req))
+            if (main_req->main)
+                main_req = main_req->main;
+            else
+                main_req = main_req->prev;
+
+        type = ap_auth_type(main_req);
         if ((type != NULL) && (strcasecmp(type, "GSSAPI") == 0)) {
             /* warn if the subrequest location and the main request
              * location have different configs */
-            if (cfg != ap_get_module_config(req->main->per_dir_config,
+            if (cfg != ap_get_module_config(main_req->per_dir_config,
                                             &auth_gssapi_module)) {
                 ap_log_rerror(APLOG_MARK, APLOG_WARNING, 0,
                               req, "Subrequest authentication bypass on "
                                    "location with different configuration!");
             }
-            if (req->main->user) {
-                req->user = apr_pstrdup(req->pool, req->main->user);
+            if (main_req->user) {
+                apr_table_t *env;
+
+                req->user = apr_pstrdup(req->pool, main_req->user);
+                req->ap_auth_type = main_req->ap_auth_type;
+
+                env = ap_get_module_config(main_req->request_config,
+                                           &auth_gssapi_module);
+                if (!env) {
+                    ap_log_rerror(APLOG_MARK, APLOG_WARNING, 0, req,
+                                  "Failed to lookup env table in subrequest");
+                } else
+                    mag_export_req_env(req, env);
+
                 return OK;
             } else {
                 ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
