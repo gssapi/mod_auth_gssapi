@@ -216,7 +216,7 @@ static char *get_ccache_name(request_rec *req, char *dir, const char *gss_name,
     escaped = escape(req->pool, escaped, '/', "~");
 
     if (use_unique == false) {
-        return apr_psprintf(req->pool, "%s/%s", dir, escaped);
+        return apr_psprintf(mc->pool, "%s/%s", dir, escaped);
     }
 
     ccname = apr_psprintf(mc->pool, "%s/%s-XXXXXX", dir, escaped);
