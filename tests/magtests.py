@@ -216,7 +216,15 @@ def setup_http(testdir, wrapenv):
     os.mkdir(os.path.join(httpdir, 'conf.d'))
     os.mkdir(os.path.join(httpdir, 'html'))
     os.mkdir(os.path.join(httpdir, 'logs'))
-    os.symlink('/etc/httpd/modules', os.path.join(httpdir, 'modules'))
+
+    distro = "Fedora"
+    moddir = "/etc/httpd/modules"
+    if not os.path.exists(moddir):
+        distro = "Debian"
+        moddir = "/usr/lib/apache2/modules"
+    if not os.path.exists(moddir):
+        raise ValueError("Could not find Apache module directory!")
+    os.symlink(moddir, os.path.join(httpdir, 'modules'))
 
     shutil.copy('src/.libs/mod_auth_gssapi.so', httpdir)
 
@@ -236,8 +244,9 @@ def setup_http(testdir, wrapenv):
                'MALLOC_PERTURB_': str(random.randint(0, 32767) % 255 + 1)}
     httpenv.update(wrapenv)
 
-    httpproc = subprocess.Popen(['httpd', '-DFOREGROUND', '-f', config],
-                                 env=httpenv, preexec_fn=os.setsid)
+    httpd = "httpd" if distro == "Fedora" else "apache2"
+    httpproc = subprocess.Popen([httpd, '-DFOREGROUND', '-f', config],
+                                env=httpenv, preexec_fn=os.setsid)
 
     return httpproc
 
