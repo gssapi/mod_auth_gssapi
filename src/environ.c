@@ -243,8 +243,8 @@ static void mag_set_name_attributes(request_rec *req, struct mag_conn *mc)
     }
 }
 
-static void mag_set_KRB5CCNAME(request_rec *req, struct mag_config *cfg,
-                               struct mag_conn *mc)
+static void mag_set_ccname_envvar(request_rec *req, struct mag_config *cfg,
+                                  struct mag_conn *mc)
 {
     apr_status_t status;
     apr_int32_t wanted = APR_FINFO_MIN | APR_FINFO_OWNER | APR_FINFO_PROT;
@@ -287,7 +287,7 @@ static void mag_set_KRB5CCNAME(request_rec *req, struct mag_config *cfg,
     }
 
     value = apr_psprintf(req->pool, "FILE:%s", path);
-    apr_table_set(mc->env, "KRB5CCNAME", value);
+    apr_table_set(mc->env, cfg->ccname_envvar, value);
 }
 
 void mag_export_req_env(request_rec *req, apr_table_t *env)
@@ -316,7 +316,7 @@ void mag_set_req_data(request_rec *req,
 
 #ifdef HAVE_CRED_STORE
     if (cfg->deleg_ccache_dir && mc->delegated && mc->ccname) {
-        mag_set_KRB5CCNAME(req, cfg, mc);
+        mag_set_ccname_envvar(req, cfg, mc);
     }
 #endif
 

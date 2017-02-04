@@ -176,8 +176,8 @@ options like keytab location, client_keytab location, ccache location etc.
 If delegation of credentials is desired credentials can be exported in a
 private directory accessible by the Apache process.
 The delegated credentials will be stored in a file named after the client
-principal and the subprocess environment variable KRB5CCNAME will be set
-to point to that file.
+principal and a request environment variable (`KRB5CCNAME` by default) will be
+set to point to that file.
 
 #### Example
     GssapiDelegCcacheDir /var/run/httpd/clientcaches
@@ -198,6 +198,16 @@ in the contrib directory.
 
 #### Example
     GssapiDelegCcacheUnique On
+
+
+### GssapiDelegCcacheEnvVar
+
+Set the name of the request environment variable that will receive the
+credential cache name.  If unspecified, defaults to `KRB5CCNAME`.
+
+#### Example
+    GssapiDelegCcacheEnvVar AJP_KRB5CCNAME
+
 
 ### GssapiUseS4U2Proxy
 
