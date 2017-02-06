@@ -87,6 +87,37 @@ static void mag_set_env_name_attr(request_rec *req, struct mag_conn *mc,
     }
 }
 
+static char* mag_escape_display_value(request_rec *req, gss_buffer_desc disp_value)
+{
+    /* This function returns a copy (in the pool) of the given gss_buffer_t where every
+     * occurrence of " has been replaced by \". This string is NULL terminated */
+    int i = 0, j = 0, n_quotes = 0;
+    char *escaped_value = NULL;
+    char *value = (char*) disp_value.value;
+
+    // count number of quotes in the input string
+    for (i = 0, j = 0; i < disp_value.length; i++)
+        if (value[i] == '"')
+            n_quotes++;
+
+    // if there are no quotes, just return a copy of the string
+    if (n_quotes == 0)
+        return apr_pstrndup(req->pool, value, disp_value.length);
+
+    // gss_buffer_t are not \0 terminated, but our result will be
+    escaped_value = apr_palloc(req->pool, disp_value.length + n_quotes + 1);
+    for (i = 0,j = 0; i < disp_value.length; i++, j++) {
+        if (value[i] == '"') {
+            escaped_value[j] = '\\';
+            j++;
+        }
+        escaped_value[j] = value[i];
+    }
+    // make the string NULL terminated
+    escaped_value[j] = '\0';
+    return escaped_value;
+}
+
 static void mag_add_json_name_attr(request_rec *req, bool first,
                                    struct name_attr *attr, char **json)
 {
@@ -106,8 +137,8 @@ static void mag_add_json_name_attr(request_rec *req, bool first,
                                    attr->value.length);
     }
     if (attr->display_value.length != 0) {
-        len = attr->display_value.length;
-        value = (const char *)attr->display_value.value;
+        value = mag_escape_display_value(req, attr->display_value);
+        len = strlen(value);
     }
     if (attr->number == 1) {
         *json = apr_psprintf(req->pool,
