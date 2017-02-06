@@ -1209,6 +1209,7 @@ static void *mag_create_dir_config(apr_pool_t *p, char *dir)
 
     cfg = (struct mag_config *)apr_pcalloc(p, sizeof(struct mag_config));
     cfg->pool = p;
+    cfg->ccname_envvar = "KRB5CCNAME";
 
     return cfg;
 }
@@ -1724,6 +1725,9 @@ static const command_rec mag_commands[] = {
                      OR_AUTHCFG, "Directory to store delegated credentials"),
     AP_INIT_ITERATE("GssapiDelegCcachePerms", mag_deleg_ccache_perms, NULL,
                      OR_AUTHCFG, "Permissions to assign to Ccache files"),
+    AP_INIT_TAKE1("GssapiDelegCcacheEnvVar", ap_set_string_slot,
+                    (void *)APR_OFFSETOF(struct mag_config, ccname_envvar),
+                    OR_AUTHCFG, "Environment variable to receive ccache name"),
     AP_INIT_FLAG("GssapiDelegCcacheUnique", mag_deleg_ccache_unique, NULL,
                  OR_AUTHCFG, "Use unique ccaches for delgation"),
     AP_INIT_FLAG("GssapiImpersonate", ap_set_flag_slot,

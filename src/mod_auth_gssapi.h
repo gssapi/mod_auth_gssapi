@@ -81,6 +81,7 @@ struct mag_config {
     gss_key_value_set_desc *cred_store;
     bool deleg_ccache_unique;
     bool s4u2self;
+    char *ccname_envvar;
 #endif
     struct seal_key *mag_skey;
 
