@@ -53,6 +53,7 @@
 #endif
 
 extern module AP_MODULE_DECLARE_DATA auth_gssapi_module;
+#define GSS_NAME_ATTR_USERDATA "GSS Name Attributes Userdata"
 
 struct mag_na_map {
     char *env_name;
