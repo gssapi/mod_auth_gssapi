@@ -35,6 +35,14 @@ static bool mag_get_name_attr(request_rec *req,
     return true;
 }
 
+static apr_status_t mag_mc_name_attrs_cleanup(void *data)
+{
+    struct mag_conn *mc = (struct mag_conn *)data;
+    free(mc->name_attributes);
+    mc->name_attributes = NULL;
+    return 0;
+}
+
 static void mc_add_name_attribute(struct mag_conn *mc,
                                   const char *name, const char *value)
 {
@@ -44,6 +52,8 @@ static void mc_add_name_attribute(struct mag_conn *mc,
         size = sizeof(struct mag_attr) * (mc->na_count + 16);
         mc->name_attributes = realloc(mc->name_attributes, size);
         if (!mc->name_attributes) apr_pool_abort_get(mc->pool)(ENOMEM);
+        apr_pool_userdata_setn(mc, GSS_NAME_ATTR_USERDATA,
+                               mag_mc_name_attrs_cleanup, mc->pool);
     }
 
     mc->name_attributes[mc->na_count].name = apr_pstrdup(mc->pool, name);

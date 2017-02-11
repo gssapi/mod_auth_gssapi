@@ -1601,8 +1601,6 @@ static const char *mag_negotiate_once(cmd_parms *parms, void *mconfig, int on)
     return NULL;
 }
 
-#define GSS_NAME_ATTR_USERDATA "GSS Name Attributes Userdata"
-
 static apr_status_t mag_name_attrs_cleanup(void *data)
 {
     struct mag_config *cfg = (struct mag_config *)data;
