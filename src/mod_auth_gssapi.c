@@ -69,7 +69,8 @@ char *mag_error(request_rec *req, const char *msg, uint32_t maj, uint32_t min)
 }
 
 enum mag_err_code {
-    MAG_GSS_ERR = 1,
+    MAG_NO_AUTH = 1,
+    MAG_GSS_ERR,
     MAG_INTERNAL,
     MAG_AUTH_NOT_ALLOWED
 };
@@ -77,6 +78,8 @@ enum mag_err_code {
 static const char *mag_err_text(enum mag_err_code err)
 {
     switch (err) {
+    case MAG_NO_AUTH:
+        return "NO AUTH DATA";
     case MAG_GSS_ERR:
         return "GSS ERROR";
     case MAG_INTERNAL:
@@ -948,10 +951,18 @@ static int mag_auth(request_rec *req)
     }
 
     /* We can proceed only if we do have an auth header */
-    if (!auth_header) goto done;
+    if (!auth_header) {
+        mag_post_error(req, cfg, MAG_NO_AUTH, 0, 0,
+                       "Client did not send any authentication headers");
+        goto done;
+    }
 
     auth_header_type = ap_getword_white(req->pool, &auth_header);
-    if (!auth_header_type) goto done;
+    if (!auth_header_type) {
+        mag_post_error(req, cfg, MAG_NO_AUTH, 0, 0,
+                       "Client sent malformed authentication headers");
+        goto done;
+    }
 
     /* We got auth header, sending auth header would mean re-auth */
     send_auth_header = !cfg->negotiate_once;
@@ -1028,6 +1039,8 @@ static int mag_auth(request_rec *req)
         break;
 
     default:
+        mag_post_error(req, cfg, MAG_NO_AUTH, 0, 0,
+                       "Client sent unknown authentication headers");
         goto done;
     }
 
