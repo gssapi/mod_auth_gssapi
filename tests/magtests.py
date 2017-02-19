@@ -239,6 +239,8 @@ def setup_http(testdir, wrapenv):
     with open(config, 'w+') as f:
         f.write(text)
 
+    shutil.copy('tests/401.html', os.path.join(httpdir, 'html'))
+
     httpenv = {'PATH': '/sbin:/bin:/usr/sbin:/usr/bin',
                'MALLOC_CHECK_': '3',
                'MALLOC_PERTURB_': str(random.randint(0, 32767) % 255 + 1)}
