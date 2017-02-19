@@ -379,3 +379,22 @@ the default owners and/or mode will be retained.
 
 #### Example
     GssapiDelegCcachePerms mode:0660 gid:webuiworkers
+
+
+### GssapiPublishErrors
+
+This option is used to publish errors as Environment Variables for use by
+httpd processes.
+
+A general error type is provided in the MAG_ERROR variable, and can have the
+following values: "GSS ERROR", "INTERNAL ERROR", "AUTH NOT ALLOWED"
+Additionally, in the variable named MAG_ERROR_TEXT there may be a free form
+error message.
+
+When the error type is "GSS ERROR" the variables GSS_ERROR_MAJ and
+GSS_ERROR_MIN contain the numeric errors returned by GSSAPI, and the
+MAG_ERROR_TEXT will contain a GSS Error message, possibly prepended by
+an additional message that provides more context.
+
+- **Enable with:** GssapiPublishErrors On
+- **Default:** GssapiPublishErrors Off

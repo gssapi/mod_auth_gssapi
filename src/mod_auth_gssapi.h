@@ -91,6 +91,7 @@ struct mag_config {
     gss_OID_set_desc *basic_mechs;
     bool negotiate_once;
     struct mag_name_attributes *name_attributes;
+    bool enverrs;
 };
 
 struct mag_server_config {

@@ -13,3 +13,6 @@ void mag_export_req_env(request_rec *req, apr_table_t *env);
 void mag_set_req_data(request_rec *req,
                       struct mag_config *cfg,
                       struct mag_conn *mc);
+
+void mag_publish_error(request_rec *req, uint32_t maj, uint32_t min,
+                       const char *gss_err, const char *mag_err);
