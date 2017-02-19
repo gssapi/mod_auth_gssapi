@@ -366,3 +366,17 @@ void mag_set_req_data(request_rec *req,
     ap_set_module_config(req->request_config, &auth_gssapi_module, mc->env);
     mag_export_req_env(req, mc->env);
 }
+
+void mag_publish_error(request_rec *req, uint32_t maj, uint32_t min,
+                       const char *gss_err, const char *mag_err)
+{
+    if (gss_err) {
+        apr_table_set(req->subprocess_env, "GSS_ERROR_MAJ",
+                      apr_psprintf(req->pool, "%u", (unsigned)maj));
+        apr_table_set(req->subprocess_env, "GSS_ERROR_MIN",
+                      apr_psprintf(req->pool, "%u", (unsigned)min));
+        apr_table_set(req->subprocess_env, "MAG_ERROR_TEXT", gss_err);
+    }
+    if (mag_err)
+        apr_table_set(req->subprocess_env, "MAG_ERROR", mag_err);
+}
