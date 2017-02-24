@@ -28,7 +28,7 @@ module AP_MODULE_DECLARE_DATA auth_gssapi_module;
 
 APLOG_USE_MODULE(auth_gssapi);
 
-static char *mag_status(request_rec *req, int type, uint32_t err)
+static char *mag_status(apr_pool_t *pool, int type, uint32_t err)
 {
     uint32_t maj_ret, min_ret;
     gss_buffer_desc text;
@@ -47,10 +47,10 @@ static char *mag_status(request_rec *req, int type, uint32_t err)
 
         len = text.length;
         if (msg_ret) {
-            msg_ret = apr_psprintf(req->pool, "%s, %*s",
+            msg_ret = apr_psprintf(pool, "%s, %*s",
                                    msg_ret, len, (char *)text.value);
         } else {
-            msg_ret = apr_psprintf(req->pool, "%*s", len, (char *)text.value);
+            msg_ret = apr_psprintf(pool, "%*s", len, (char *)text.value);
         }
         gss_release_buffer(&min_ret, &text);
     } while (msg_ctx != 0);
@@ -58,14 +58,14 @@ static char *mag_status(request_rec *req, int type, uint32_t err)
     return msg_ret;
 }
 
-char *mag_error(request_rec *req, const char *msg, uint32_t maj, uint32_t min)
+char *mag_error(apr_pool_t *pool, const char *msg, uint32_t maj, uint32_t min)
 {
     char *msg_maj;
     char *msg_min;
 
-    msg_maj = mag_status(req, GSS_C_GSS_CODE, maj);
-    msg_min = mag_status(req, GSS_C_MECH_CODE, min);
-    return apr_psprintf(req->pool, "%s: [%s (%s)]", msg, msg_maj, msg_min);
+    msg_maj = mag_status(pool, GSS_C_GSS_CODE, maj);
+    msg_min = mag_status(pool, GSS_C_MECH_CODE, min);
+    return apr_psprintf(pool, "%s: [%s (%s)]", msg, msg_maj, msg_min);
 }
 
 enum mag_err_code {
@@ -98,7 +98,7 @@ static void mag_post_error(request_rec *req, struct mag_config *cfg,
     const char *text = NULL;
 
     if (maj)
-        text = mag_error(req, msg, maj, min);
+        text = mag_error(req->pool, msg, maj, min);
 
     if (cfg->enverrs)
         mag_publish_error(req, maj, min, text ? text : msg, mag_err_text(err));
@@ -288,7 +288,7 @@ static void mag_store_deleg_creds(request_rec *req, const char *ccname,
                               GSS_C_NULL_OID, 1, 1, &store, NULL, NULL);
     if (GSS_ERROR(maj)) {
         ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req, "%s",
-                      mag_error(req, "failed to store delegated creds",
+                      mag_error(req->pool, "failed to store delegated creds",
                                 maj, min));
     }
 }
@@ -598,7 +598,7 @@ done:
         if (maj != GSS_S_COMPLETE) {
             ap_log_rerror(APLOG_MARK, APLOG_WARNING, 0, req,
                           "Failed to restore per-thread ccache, %s",
-                          mag_error(req, "gss_krb5_ccache_name() "
+                          mag_error(req->pool, "gss_krb5_ccache_name() "
                                     "failed", maj, min));
         }
     }

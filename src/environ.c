@@ -28,7 +28,7 @@ static bool mag_get_name_attr(request_rec *req,
         ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
                       "gss_get_name_attribute() failed on %.*s%s",
                       (int)attr->name.length, (char *)attr->name.value,
-                      mag_error(req, "", maj, min));
+                      mag_error(req->pool, "", maj, min));
         return false;
     }
 
@@ -209,7 +209,7 @@ void mag_get_name_attributes(request_rec *req, struct mag_config *cfg,
 
     maj = gss_inquire_name(&min, name, NULL, NULL, &attrs);
     if (GSS_ERROR(maj)) {
-        error = mag_error(req, "gss_inquire_name() failed", maj, min);
+        error = mag_error(req->pool, "gss_inquire_name() failed", maj, min);
         ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req, "%s", error);
         apr_table_set(mc->env, "GSS_NAME_ATTR_ERROR", error);
         return;

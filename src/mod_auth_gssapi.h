@@ -136,4 +136,4 @@ struct mag_conn {
 
 struct mag_conn *mag_new_conn_ctx(apr_pool_t *pool);
 const char *mag_str_auth_type(int auth_type);
-char *mag_error(request_rec *req, const char *msg, uint32_t maj, uint32_t min);
+char *mag_error(apr_pool_t *pool, const char *msg, uint32_t maj, uint32_t min);
