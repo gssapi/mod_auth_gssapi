@@ -92,6 +92,7 @@ struct mag_config {
     bool negotiate_once;
     struct mag_name_attributes *name_attributes;
     bool enverrs;
+    gss_name_t acceptor_name;
 };
 
 struct mag_server_config {

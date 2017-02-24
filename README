@@ -398,3 +398,23 @@ an additional message that provides more context.
 
 - **Enable with:** GssapiPublishErrors On
 - **Default:** GssapiPublishErrors Off
+
+
+### GssapiAcceptorName
+
+This option is used to force the server to accept only for a specific name.
+
+This allows, for example to select to use a specific credential when multiple
+keys are provided in a keytab.
+
+Note: By default no name is set and any name in a keytab or mechanism specific
+acceptor credential will be allowed.
+
+Note: Global gssapi options set in krb5.conf like 'ignore_acceptor_hostname'
+may affect the ability to restrict names.
+
+Note: The GSS_C_NT_HOSTBASED_SERVICE format is used for names (see example).
+
+#### Example
+    GssapiAcceptorName HTTP@www.example.com
+

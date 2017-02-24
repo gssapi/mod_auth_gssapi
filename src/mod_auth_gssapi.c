@@ -189,11 +189,11 @@ static bool mag_acquire_creds(request_rec *req,
 #ifdef HAVE_CRED_STORE
     gss_const_key_value_set_t store = cfg->cred_store;
 
-    maj = gss_acquire_cred_from(&min, GSS_C_NO_NAME, GSS_C_INDEFINITE,
+    maj = gss_acquire_cred_from(&min, cfg->acceptor_name, GSS_C_INDEFINITE,
                                 desired_mechs, cred_usage, store, creds,
                                 actual_mechs, NULL);
 #else
-    maj = gss_acquire_cred(&min, GSS_C_NO_NAME, GSS_C_INDEFINITE,
+    maj = gss_acquire_cred(&min, cfg->acceptor_name, GSS_C_INDEFINITE,
                            desired_mechs, cred_usage, creds,
                            actual_mechs, NULL);
 #endif
@@ -1706,6 +1706,24 @@ static const char *mag_basic_auth_mechs(cmd_parms *parms, void *mconfig,
 }
 #endif
 
+static const char *mag_acceptor_name(cmd_parms *parms, void *mconfig,
+                                     const char *w)
+{
+    struct mag_config *cfg = (struct mag_config *)mconfig;
+    gss_buffer_desc bufnam = { strlen(w), (void *)w };
+    uint32_t maj, min;
+
+    maj = gss_import_name(&min, &bufnam, GSS_C_NT_HOSTBASED_SERVICE,
+                          &cfg->acceptor_name);
+    if (GSS_ERROR(maj)) {
+        return apr_psprintf(parms->pool, "[%s] Failed to import name '%s' %s",
+                            parms->cmd->name, w,
+                            mag_error(parms->pool, "", maj, min));
+    }
+
+    return NULL;
+}
+
 static void *mag_create_server_config(apr_pool_t *p, server_rec *s)
 {
     struct mag_server_config *scfg;
@@ -1780,6 +1798,8 @@ static const command_rec mag_commands[] = {
     AP_INIT_FLAG("GssapiPublishErrors", ap_set_flag_slot,
                  (void *)APR_OFFSETOF(struct mag_config, enverrs), OR_AUTHCFG,
                  "Publish GSSAPI Errors in Envionment Variables"),
+    AP_INIT_RAW_ARGS("GssapiAcceptorName", mag_acceptor_name, NULL, OR_AUTHCFG,
+                     "Name of the acceptor credentials."),
     { NULL }
 };
 

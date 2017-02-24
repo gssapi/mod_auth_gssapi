@@ -391,6 +391,23 @@ def test_basic_auth_krb5(testdir, testenv, testlog):
             sys.stderr.write('BASIC Proxy Auth: SUCCESS\n')
 
 
+def test_bad_acceptor_name(testdir, testenv, testlog):
+
+    bandir = os.path.join(testdir, 'httpd', 'html', 'bad_acceptor_name')
+    os.mkdir(bandir)
+    shutil.copy('tests/index.html', bandir)
+
+    with (open(testlog, 'a')) as logfile:
+        ban = subprocess.Popen(["tests/t_bad_acceptor_name.py"],
+                               stdout=logfile, stderr=logfile,
+                               env=testenv, preexec_fn=os.setsid)
+        ban.wait()
+        if ban.returncode != 0:
+            sys.stderr.write('BAD ACCEPTOR: SUCCESS\n')
+        else:
+            sys.stderr.write('BAD ACCEPTOR: FAILED\n')
+
+
 if __name__ == '__main__':
 
     args = parse_args()
@@ -424,6 +441,8 @@ if __name__ == '__main__':
         test_spnego_rewrite(testdir, testenv, testlog)
 
         test_spnego_negotiate_once(testdir, testenv, testlog)
+
+        test_bad_acceptor_name(testdir, testenv, testlog)
 
         testenv = {'MAG_USER_NAME': USR_NAME,
                    'MAG_USER_PASSWORD': USR_PWD,
