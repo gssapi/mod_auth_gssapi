@@ -101,32 +101,58 @@ static char *mag_escape_display_value(request_rec *req,
                                       gss_buffer_desc disp_value)
 {
     /* This function returns a copy (in the pool) of the given gss_buffer_t
-     * where every occurrence of " has been replaced by \". This string is
+     * where some characters are escaped as required by RFC4627. The string is
      * NULL terminated */
-    int i = 0, j = 0, n_quotes = 0;
+    char *value = disp_value.value;
     char *escaped_value = NULL;
-    char *value = (char*) disp_value.value;
+    char *p = NULL;
 
-    /* count number of quotes in the input string */
-    for (i = 0, j = 0; i < disp_value.length; i++)
-        if (value[i] == '"')
-            n_quotes++;
-
-    /* if there are no quotes, just return a copy of the string */
-    if (n_quotes == 0)
-        return apr_pstrndup(req->pool, value, disp_value.length);
-
-    /* gss_buffer_t are not \0 terminated, but our result will be */
-    escaped_value = apr_palloc(req->pool, disp_value.length + n_quotes + 1);
-    for (i = 0,j = 0; i < disp_value.length; i++, j++) {
-        if (value[i] == '"') {
-            escaped_value[j] = '\\';
-            j++;
+    /* gss_buffer_t are not \0 terminated, but our result will be. Hence,
+     * escaped length will be original length * 6 + 1 in the worst case */
+    p = escaped_value = apr_palloc(req->pool, disp_value.length * 6 + 1);
+    for (size_t i = 0; i < disp_value.length; i++) {
+        switch (value[i]) {
+        case '"':
+            memcpy(p, "\\\"", 2);
+            p += 2;
+            break;
+        case '\\':
+            memcpy(p, "\\\\", 2);
+            p += 2;
+            break;
+        case '\b':
+            memcpy(p, "\\b", 2);
+            p += 2;
+            break;
+        case '\t':
+            memcpy(p, "\\t", 2);
+            p += 2;
+            break;
+        case '\r':
+            memcpy(p, "\\r", 2);
+            p += 2;
+            break;
+        case '\f':
+            memcpy(p, "\\f", 2);
+            p += 2;
+            break;
+        case '\n':
+            memcpy(p, "\\n", 2);
+            p += 2;
+            break;
+        default:
+            if (value[i] <= 0x1F) {
+                apr_snprintf(p, 7, "\\u%04d", (int)value[i]);
+                p += 6;
+            } else {
+                *p = value[i];
+                p += 1;
+            }
+            break;
         }
-        escaped_value[j] = value[i];
     }
     /* make the string NULL terminated */
-    escaped_value[j] = '\0';
+    *p = '\0';
     return escaped_value;
 }
 
