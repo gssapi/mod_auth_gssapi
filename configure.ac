@@ -26,13 +26,22 @@ AC_TYPE_UINT32_T
 # Checks for library functions.
 AC_CHECK_FUNCS([strcasecmp])
 
+AC_ARG_WITH([installpath],
+            [AS_HELP_STRING([--with-installpath=PATH],
+                            [alternative install path])],
+            [AC_SUBST(INSTALLPATH, $with_installpath)])
+
 AC_ARG_WITH([apxs],
             [AS_HELP_STRING([--with-apxs=PATH/NAME],[path to the apxs binary [[apxs]]])],
             [AC_SUBST(APXS, $with_apxs)],
             [AC_PATH_PROGS(APXS, [apxs2 apxs])])
+
 AS_IF([test "x${APXS}" != "x" -a -x "${APXS}"],
       [AC_MSG_NOTICE([apxs found at $APXS])
-       APXS_LIBEXECDIR=`${APXS} -q LIBEXECDIR`
+       AS_IF([test "x${INSTALLPATH}" != "x"],
+       [AC_MSG_NOTICE([installpath set at $INSTALLPATH])
+        APXS_LIBEXECDIR=`echo ${INSTALLPATH}`],
+        [APXS_LIBEXECDIR=`${APXS} -q LIBEXECDIR`])
        AC_SUBST(APXS_LIBEXECDIR)],
       [AC_MSG_FAILURE(["apxs not found. Use --with-apxs"])])
 
@@ -77,13 +86,11 @@ AC_SUBST([GSSAPI_LIBS])
 MAG_CFLAGS="`${APXS} -q CFLAGS` `${APXS} -q EXTRA_CPPFLAGS` `${APR} --cflags` ${GSSAPI_CFLAGS} ${OPENSSL_CFLAGS} -I`${APXS} -q INCLUDEDIR` `${APR} --includes`"
 MAG_LIBS="`${APR} --libs` ${GSSAPI_LIBS} ${OPENSSL_LIBS}"
 LIBTOOL="`${APXS} -q LIBTOOL`"
-MAG_LIBDIR="`${APXS} -q libexecdir`"
 
 AC_SUBST([MAG_CFLAGS])
 AC_SUBST([MAG_LIBS])
 AC_SUBST([LIBTOOL])
-AC_SUBST([MAG_LIBDIR])
 
-AC_CONFIG_FILES([Makefile src/Makefile src/asn1c/Makefile])
+AC_CONFIG_FILES([Makefile src/Makefile src/asn1c/Makefile tests/Makefile])
 
 AC_OUTPUT

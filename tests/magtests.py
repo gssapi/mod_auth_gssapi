@@ -21,6 +21,8 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Mod Auth GSSAPI Tests Environment')
     parser.add_argument('--path', default='%s/scratchdir' % os.getcwd(),
                         help="Directory in which tests are run")
+    parser.add_argument('--so-dir', default='%s/src/.libs' % os.getcwd(),
+                        help="mod_auth_gssapi shared object dirpath")
 
     return vars(parser.parse_args())
 
@@ -207,7 +209,7 @@ def setup_keys(tesdir, env):
     return keys_env
 
 
-def setup_http(testdir, wrapenv):
+def setup_http(testdir, so_dir, wrapenv):
 
     httpdir = os.path.join(testdir, 'httpd')
     if os.path.exists(httpdir):
@@ -226,7 +228,7 @@ def setup_http(testdir, wrapenv):
         raise ValueError("Could not find Apache module directory!")
     os.symlink(moddir, os.path.join(httpdir, 'modules'))
 
-    shutil.copy('src/.libs/mod_auth_gssapi.so', httpdir)
+    shutil.copy('%s/mod_auth_gssapi.so' % so_dir, httpdir)
 
     with open('tests/httpd.conf') as f:
         t = Template(f.read())
@@ -413,6 +415,7 @@ if __name__ == '__main__':
     args = parse_args()
 
     testdir = args['path']
+    so_dir = args['so_dir']
     if os.path.exists(testdir):
         shutil.rmtree(testdir)
     os.makedirs(testdir)
@@ -427,7 +430,7 @@ if __name__ == '__main__':
         kdcproc, kdcenv = setup_kdc(testdir, wrapenv)
         processes['KDC(%d)' % kdcproc.pid] = kdcproc
 
-        httpproc = setup_http(testdir, kdcenv)
+        httpproc = setup_http(testdir, so_dir, kdcenv)
         processes['HTTPD(%d)' % httpproc.pid] = httpproc
 
         keysenv = setup_keys(testdir, kdcenv)

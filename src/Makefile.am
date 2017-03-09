@@ -1,6 +1,6 @@
 AM_CPPFLAGS = -I $(srcdir)/asn1c
 
-magdir = $(MAG_LIBDIR)
+magdir = $(APXS_LIBEXECDIR)
 mag_LTLIBRARIES = \
     mod_auth_gssapi.la
 
