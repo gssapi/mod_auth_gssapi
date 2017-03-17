@@ -329,7 +329,7 @@ static void mag_set_ccname_envvar(request_rec *req, struct mag_config *cfg,
             (finfo.protection != cfg->deleg_ccache_mode)) {
             status = apr_file_perms_set(path, cfg->deleg_ccache_mode);
             if (status != APR_SUCCESS)
-                ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, req,
+                ap_log_rerror(APLOG_MARK, APLOG_WARNING|APLOG_NOERRNO, 0, req,
                               "failed to set perms (%o) on file (%s)!",
                               cfg->deleg_ccache_mode, path);
         }
@@ -337,7 +337,7 @@ static void mag_set_ccname_envvar(request_rec *req, struct mag_config *cfg,
             (finfo.user != cfg->deleg_ccache_uid)) {
             status = lchown(path, cfg->deleg_ccache_uid, -1);
             if (status != 0)
-                ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, req,
+                ap_log_rerror(APLOG_MARK, APLOG_WARNING|APLOG_NOERRNO, 0, req,
                               "failed to set user (%u) on file (%s)!",
                               cfg->deleg_ccache_uid, path);
         }
@@ -345,13 +345,13 @@ static void mag_set_ccname_envvar(request_rec *req, struct mag_config *cfg,
             (finfo.group != cfg->deleg_ccache_gid)) {
             status = lchown(path, -1, cfg->deleg_ccache_gid);
             if (status != 0)
-                ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, req,
+                ap_log_rerror(APLOG_MARK, APLOG_WARNING|APLOG_NOERRNO, 0, req,
                               "failed to set group (%u) on file (%s)!",
                               cfg->deleg_ccache_gid, path);
         }
     } else {
         /* set the file cache anyway, but warn */
-        ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, req,
+        ap_log_rerror(APLOG_MARK, APLOG_WARNING|APLOG_NOERRNO, 0, req,
                       "KRB5CCNAME file (%s) lookup failed!", path);
     }
 
