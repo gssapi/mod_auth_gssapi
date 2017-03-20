@@ -9,6 +9,9 @@ AC_CONFIG_HEADERS([src/config.h])
 
 # Checks for programs.
 AC_PROG_CC_STDC
+AC_PROG_YACC
+AC_PROG_LEX
+AC_DECL_YYTEXT
 
 LT_INIT
 AC_SUBST(INCLTDL)
