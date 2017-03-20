@@ -1,14 +1,17 @@
 AM_CPPFLAGS = -I $(srcdir)/asn1c
 
+BUILT_SOURCES = parser.h
+AM_YFLAGS = -d
+
 magdir = $(APXS_LIBEXECDIR)
 mag_LTLIBRARIES = \
     mod_auth_gssapi.la
 
 dist_noinst_HEADERS = \
-    mod_auth_gssapi.h crypto.h sessions.h environ.h
+    mod_auth_gssapi.h crypto.h sessions.h environ.h mag_parse.h
 
 mod_auth_gssapi_la_SOURCES = \
-    mod_auth_gssapi.c crypto.c sessions.c environ.c
+    mod_auth_gssapi.c crypto.c sessions.c environ.c lex.l parser.y
 mod_auth_gssapi_la_CFLAGS = \
     $(MAG_CFLAGS)
 mod_auth_gssapi_la_LIBADD = \
@@ -17,7 +20,8 @@ mod_auth_gssapi_la_LDFLAGS = \
     $(MAG_LIBS) \
     -avoid-version \
     -module \
-    -export-symbols-regex auth_gssapi_module
+    -export-symbols-regex auth_gssapi_module \
+    $(LEXLIB)
 
 install-exec-local:
 	test -d $(DESTDIR)$(APXS_LIBEXECDIR) || mkdir -p $(DESTDIR)$(APXS_LIBEXECDIR)

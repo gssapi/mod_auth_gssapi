@@ -91,6 +91,7 @@ struct mag_config {
     gss_OID_set_desc *basic_mechs;
     bool negotiate_once;
     struct mag_name_attributes *name_attributes;
+    const char *required_na_expr;
     bool enverrs;
     gss_name_t acceptor_name;
     bool acceptor_name_from_req;
@@ -129,6 +130,8 @@ struct mag_conn {
     struct databuf basic_hash;
     bool is_preserved;
     int na_count;
+    const char **required_name_attrs;
+    const char **required_name_vals;
     struct mag_attr *name_attributes;
     const char *ccname;
     apr_table_t *env;

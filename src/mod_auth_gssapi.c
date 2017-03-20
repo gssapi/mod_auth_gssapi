@@ -1,6 +1,7 @@
 /* Copyright (C) 2014, 2016 mod_auth_gssapi contributors - See COPYING for (C) terms */
 
 #include "mod_auth_gssapi.h"
+#include "mag_parse.h"
 
 const gss_OID_desc gss_mech_spnego = {
     6, "\x2b\x06\x01\x05\x05\x02"
@@ -1194,7 +1195,7 @@ static int mag_complete(struct mag_req_cfg *req_cfg, struct mag_conn *mc,
     gss_buffer_desc name = GSS_C_EMPTY_BUFFER;
     struct mag_config *cfg = req_cfg->cfg;
     request_rec *req = req_cfg->req;
-    int ret = HTTP_UNAUTHORIZED;
+    int r, ret = HTTP_UNAUTHORIZED;
     uint32_t maj, min;
 
     maj = gss_display_name(&min, client, &name, NULL);
@@ -1211,6 +1212,19 @@ static int mag_complete(struct mag_req_cfg *req_cfg, struct mag_conn *mc,
     mc->expiration = time(NULL) + vtime;
 
     mag_get_name_attributes(req, cfg, client, mc);
+
+    r = mag_verify_name_attributes(cfg->required_na_expr,
+                                   mc->required_name_attrs,
+                                   mc->required_name_vals);
+    if (r == -1) {
+        mag_post_error(req, cfg, MAG_INTERNAL, 0, 0,
+                       "Error verifying name attributes!");
+        goto done;
+    } else if (r == 0) {
+        ret = HTTP_FORBIDDEN;
+        mag_set_req_attr_fail(req, cfg, mc);
+        goto done;
+    }
 
 #ifdef HAVE_CRED_STORE
     if (cfg->deleg_ccache_dir &&
@@ -1728,6 +1742,21 @@ static const char *mag_name_attrs(cmd_parms *parms, void *mconfig,
     return NULL;
 }
 
+static const char *required_name_attrs(cmd_parms *parms, void *mconfig,
+                                     const char *w)
+{
+    struct mag_config *cfg = (struct mag_config *)mconfig;
+
+    if (!mag_check_name_attr_expr(w)) {
+        ap_log_error(APLOG_MARK, APLOG_ERR, 0, parms->server,
+                     "syntax error in [%s].", w);
+        return "Failed to verify required name attribute expression";
+    }
+    cfg->required_na_expr = apr_pstrdup(cfg->pool, w);
+
+    return NULL;
+}
+
 #ifdef HAVE_GSS_ACQUIRE_CRED_WITH_PASSWORD
 static const char *mag_basic_auth_mechs(cmd_parms *parms, void *mconfig,
                                         const char *w)
@@ -1835,6 +1864,8 @@ static const command_rec mag_commands[] = {
                     "Don't resend negotiate header on negotiate failure"),
     AP_INIT_RAW_ARGS("GssapiNameAttributes", mag_name_attrs, NULL, OR_AUTHCFG,
                      "Name Attributes to be exported as environ variables"),
+    AP_INIT_RAW_ARGS("GssapiRequiredNameAttributes", required_name_attrs, NULL,
+                     OR_AUTHCFG, "Name Attributes required to be present"),
     AP_INIT_FLAG("GssapiPublishErrors", ap_set_flag_slot,
                  (void *)APR_OFFSETOF(struct mag_config, enverrs), OR_AUTHCFG,
                  "Publish GSSAPI Errors in Envionment Variables"),

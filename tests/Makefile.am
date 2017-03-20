@@ -1,3 +1,5 @@
+AM_CPPFLAGS = -I ../src
+
 EXTRA_DIST = \
 	401.html \
 	httpd.conf \
@@ -13,4 +15,13 @@ EXTRA_DIST = \
 	t_spnego_proxy.py \
 	t_spnego.py \
 	t_spnego_rewrite.py \
+	natest.c \
+	natest.sh \
 	$(NULL)
+
+# BUILT_SOURCES = ../src/parser.h
+# AM_YFLAGS = -d
+# noinst_PROGRAMS = natest
+# natest_SOURCES = natest.c ../src/lex.l ../src/parser.y
+# natest_CFLAGS = $(MAG_CFLAGS)
+# natest_LDFLAGS = $(MAG_LIBS) $(LEXLIB)

@@ -28,6 +28,7 @@ To run tests, you also need:
   `krb5-server` on Fedora)
 * Packages `mod_session`, `krb5-workstation`, `python-requests-kerberos`,
   and `python-gssapi` on Fedora
+* Some tests require `krb5-pkinit` package on fedora and krb5 >= 1.15.
 * [nss_wrapper](https://cwrap.org/nss_wrapper.html), packaged in Fedora
 * [socket_wrapper](https://cwrap.org/socket_wrapper.html), packaged in Fedora
 
@@ -306,6 +307,34 @@ underscores for environment variable names.
     GssapiNameAttributes json
     GssapiNameAttributes RADIUS_NAME urn:ietf:params:gss:radius-attribute_1
 
+### GssapiRequiredNameAttributes
+
+This option allows specifying one or more Name Attributes that the client must
+possess in order to be authorized to access the location. The required Name
+Attributes are specified by name=value pairs (name being the ATTRIBUTE_NAME as
+mentioned above, and value being a Null-terminated string. Alternately, if a
+Name Attribute produces binary values or is expected to contain a space
+character, the desired value can be specified by a ':=' and a base64-encoded
+string).
+
+A combination of Name Attributes (including multiple values from a single Name
+Attribute type) can be specified with an expression that separates each
+name=value pair with the "and" or "or" logical operators.  Operator precedence
+can be influenced by parenthesized statements.
+
+	foo=bar
+	foo:=YmFy
+	foo=bar or foo=baz
+	foo=bar and foo=baz and bar=baz
+	(foo=bar and foo=baz) or bar:=YmFy
+
+If the Name Attributes associated with the client do not satisfy the given
+expression, or no Name Attributes are present, a 403 response is returned.
+
+#### Example
+    GssapiRequiredNameAttributes "auth-indicators=high"
+    GssapiRequiredNameAttributes "auth-indicators=high or other-attr=foo"
+    GssapiRequiredNameAttributes "((auth-indicators=low and auth-indicators=med) or auth-indicators=high)"
 
 ### GssapiNegotiateOnce
 
