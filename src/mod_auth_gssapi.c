@@ -833,7 +833,7 @@ static int mag_auth(request_rec *req)
     gss_OID_set desired_mechs = GSS_C_NO_OID_SET;
     struct mag_conn *mc = NULL;
     int i;
-    bool send_auth_header = true;
+    bool send_nego_header = true;
 
     type = ap_auth_type(req);
     if ((type == NULL) || (strcasecmp(type, "GSSAPI") != 0)) {
@@ -907,6 +907,11 @@ static int mag_auth(request_rec *req)
         }
     }
 
+    /* check if admin wants to disable negotiate with this client */
+    if (apr_table_get(req->subprocess_env, "gssapi-no-negotiate")) {
+        send_nego_header = false;
+    }
+
     if (cfg->ssl_only) {
         if (!mag_conn_is_https(req->connection)) {
             mag_post_error(req, cfg, MAG_AUTH_NOT_ALLOWED, 0, 0,
@@ -965,7 +970,9 @@ static int mag_auth(request_rec *req)
     }
 
     /* We got auth header, sending auth header would mean re-auth */
-    send_auth_header = !cfg->negotiate_once;
+    if (cfg->negotiate_once) {
+            send_nego_header = false;
+    }
 
     for (i = 0; auth_types[i] != NULL; i++) {
         if (strcasecmp(auth_header_type, auth_types[i]) == 0) {
@@ -1126,7 +1133,7 @@ done:
             apr_table_add(req->err_headers_out, req_cfg->rep_proto, reply);
         }
     } else if (ret == HTTP_UNAUTHORIZED) {
-        if (send_auth_header) {
+        if (send_nego_header) {
             apr_table_add(req->err_headers_out,
                           req_cfg->rep_proto, "Negotiate");
             if (is_mech_allowed(desired_mechs, gss_mech_ntlmssp,

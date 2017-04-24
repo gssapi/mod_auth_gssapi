@@ -410,6 +410,23 @@ def test_bad_acceptor_name(testdir, testenv, testlog):
             sys.stderr.write('BAD ACCEPTOR: FAILED\n')
 
 
+def test_no_negotiate(testdir, testenv, testlog):
+
+    nonego_dir = os.path.join(testdir, 'httpd', 'html', 'nonego')
+    os.mkdir(nonego_dir)
+    shutil.copy('tests/index.html', nonego_dir)
+
+    with (open(testlog, 'a')) as logfile:
+        spnego = subprocess.Popen(["tests/t_nonego.py"],
+                                  stdout=logfile, stderr=logfile,
+                                  env=testenv, preexec_fn=os.setsid)
+        spnego.wait()
+        if spnego.returncode != 0:
+            sys.stderr.write('NO Negotiate: FAILED\n')
+        else:
+            sys.stderr.write('NO Negotiate: SUCCESS\n')
+
+
 if __name__ == '__main__':
 
     args = parse_args()
@@ -453,6 +470,8 @@ if __name__ == '__main__':
                    'MAG_USER_PASSWORD_2': USR_PWD_2}
         testenv.update(kdcenv)
         test_basic_auth_krb5(testdir, testenv, testlog)
+
+        test_no_negotiate(testdir, testenv, testlog)
 
     finally:
         with (open(testlog, 'a')) as logfile:
