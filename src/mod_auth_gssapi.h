@@ -93,6 +93,7 @@ struct mag_config {
     struct mag_name_attributes *name_attributes;
     bool enverrs;
     gss_name_t acceptor_name;
+    bool acceptor_name_from_req;
 };
 
 struct mag_server_config {

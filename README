@@ -407,6 +407,10 @@ This option is used to force the server to accept only for a specific name.
 This allows, for example to select to use a specific credential when multiple
 keys are provided in a keytab.
 
+A special value of {HOSTNAME} will make the code use the name apache sees in
+the httpd request to select the correct name to use. This may be useful to
+allow multiple names and multiple keys to be used on the same apache instance.
+
 Note: By default no name is set and any name in a keytab or mechanism specific
 acceptor credential will be allowed.
 

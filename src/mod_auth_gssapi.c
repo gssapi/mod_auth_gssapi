@@ -185,15 +185,38 @@ static bool mag_acquire_creds(request_rec *req,
                               gss_cred_id_t *creds,
                               gss_OID_set *actual_mechs)
 {
+    gss_name_t acceptor_name = GSS_C_NO_NAME;
     uint32_t maj, min;
+    bool ret;
+
+    if (cfg->acceptor_name_from_req) {
+        gss_buffer_desc bufnam;
+
+        bufnam.value = apr_psprintf(req->pool, "HTTP@%s", req->hostname);
+        bufnam.length = strlen(bufnam.value);
+
+        ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, req, "GSS Server Name: %s",
+                      (char *)bufnam.value);
+
+        maj = gss_import_name(&min, &bufnam, GSS_C_NT_HOSTBASED_SERVICE,
+                              &acceptor_name);
+        if (GSS_ERROR(maj)) {
+            mag_post_error(req, cfg, MAG_GSS_ERR, maj, min,
+                           "gss_import_name() failed to import hostnname");
+            return false;
+        }
+    } else {
+        acceptor_name = cfg->acceptor_name;
+    }
+
 #ifdef HAVE_CRED_STORE
     gss_const_key_value_set_t store = cfg->cred_store;
 
-    maj = gss_acquire_cred_from(&min, cfg->acceptor_name, GSS_C_INDEFINITE,
+    maj = gss_acquire_cred_from(&min, acceptor_name, GSS_C_INDEFINITE,
                                 desired_mechs, cred_usage, store, creds,
                                 actual_mechs, NULL);
 #else
-    maj = gss_acquire_cred(&min, cfg->acceptor_name, GSS_C_INDEFINITE,
+    maj = gss_acquire_cred(&min, acceptor_name, GSS_C_INDEFINITE,
                            desired_mechs, cred_usage, creds,
                            actual_mechs, NULL);
 #endif
@@ -201,10 +224,15 @@ static bool mag_acquire_creds(request_rec *req,
     if (GSS_ERROR(maj)) {
         mag_post_error(req, cfg, MAG_GSS_ERR, maj, min,
                        "gss_acquire_cred[_from]() failed to get server creds");
-        return false;
+        ret = false;
+    } else {
+        ret = true;
     }
 
-    return true;
+    if (cfg->acceptor_name_from_req) {
+        gss_release_name(&min, &acceptor_name);
+    }
+    return ret;
 }
 
 #ifdef HAVE_CRED_STORE
@@ -1719,6 +1747,11 @@ static const char *mag_acceptor_name(cmd_parms *parms, void *mconfig,
     struct mag_config *cfg = (struct mag_config *)mconfig;
     gss_buffer_desc bufnam = { strlen(w), (void *)w };
     uint32_t maj, min;
+
+    if (strcmp(w, "{HOSTNAME}") == 0) {
+        cfg->acceptor_name_from_req = true;
+        return NULL;
+    }
 
     maj = gss_import_name(&min, &bufnam, GSS_C_NT_HOSTBASED_SERVICE,
                           &cfg->acceptor_name);
