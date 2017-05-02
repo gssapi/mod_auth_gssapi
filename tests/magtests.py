@@ -28,6 +28,8 @@ def parse_args():
 
 
 WRAP_HOSTNAME = "kdc.mag.dev"
+WRAP_ALIASNAME = "alias.mag.dev"
+WRAP_FAILNAME = "fail.mag.dev"
 WRAP_IPADDR = '127.0.0.9'
 WRAP_HTTP_PORT = '80'
 WRAP_PROXY_PORT = '8080'
@@ -50,7 +52,9 @@ def setup_wrappers(base):
 
     hosts_file = os.path.join(testdir, 'hosts')
     with open(hosts_file, 'w+') as f:
-        f.write('%s %s' % (WRAP_IPADDR, WRAP_HOSTNAME))
+        f.write('%s %s\n' % (WRAP_IPADDR, WRAP_HOSTNAME))
+        f.write('%s %s\n' % (WRAP_IPADDR, WRAP_ALIASNAME))
+        f.write('%s %s\n' % (WRAP_IPADDR, WRAP_FAILNAME))
 
     wenv = {'LD_PRELOAD': 'libsocket_wrapper.so libnss_wrapper.so',
             'SOCKET_WRAPPER_DIR': wrapdir,
@@ -200,6 +204,15 @@ def setup_keys(tesdir, env):
         kadmin_local(cmd, env, logfile)
 
     cmd = "addprinc -pw %s -e %s %s" % (USR_PWD_2, KEY_TYPE, USR_NAME_2)
+    with (open(testlog, 'a')) as logfile:
+        kadmin_local(cmd, env, logfile)
+
+    # alias for multinamed hosts testing
+    alias_name = "HTTP/%s" % WRAP_ALIASNAME
+    cmd = "addprinc -randkey -e %s %s" % (KEY_TYPE, alias_name)
+    with (open(testlog, 'a')) as logfile:
+        kadmin_local(cmd, env, logfile)
+    cmd = "ktadd -k %s -e %s %s" % (svc_keytab, KEY_TYPE, alias_name)
     with (open(testlog, 'a')) as logfile:
         kadmin_local(cmd, env, logfile)
 
@@ -427,6 +440,36 @@ def test_no_negotiate(testdir, testenv, testlog):
             sys.stderr.write('NO Negotiate: SUCCESS\n')
 
 
+def test_hostname_acceptor(testdir, testenv, testlog):
+
+    hdir = os.path.join(testdir, 'httpd', 'html', 'hostname_acceptor')
+    os.mkdir(hdir)
+    shutil.copy('tests/index.html', hdir)
+
+    with (open(testlog, 'a')) as logfile:
+        failed = False
+        for (name, fail) in [(WRAP_HOSTNAME, False),
+                             (WRAP_ALIASNAME,False),
+                             (WRAP_FAILNAME, True)]:
+            res = subprocess.Popen(["tests/t_hostname_acceptor.py", name],
+                                   stdout=logfile, stderr=logfile,
+                                   env=testenv, preexec_fn=os.setsid)
+            res.wait()
+            if fail:
+                if res.returncode == 0:
+                    failed = True
+            else:
+                if res.returncode != 0:
+                    failed = True
+            if failed:
+                break
+
+        if failed:
+            sys.stderr.write('HOSTNAME ACCEPTOR: FAILED\n')
+        else:
+            sys.stderr.write('HOSTNAME ACCEPTOR: SUCCESS\n')
+
+
 if __name__ == '__main__':
 
     args = parse_args()
@@ -461,6 +504,8 @@ if __name__ == '__main__':
         test_spnego_rewrite(testdir, testenv, testlog)
 
         test_spnego_negotiate_once(testdir, testenv, testlog)
+
+        test_hostname_acceptor(testdir, testenv, testlog)
 
         test_bad_acceptor_name(testdir, testenv, testlog)
 
