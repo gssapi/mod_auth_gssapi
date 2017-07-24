@@ -43,6 +43,75 @@ static apr_status_t mag_mc_name_attrs_cleanup(void *data)
     return 0;
 }
 
+static apr_status_t mag_mc_req_name_attrs_cleanup(void *data)
+{
+    struct mag_conn *mc = (struct mag_conn *)data;
+
+    free(mc->required_name_attrs);
+    free(mc->required_name_vals);
+    mc->required_name_attrs = NULL;
+    mc->required_name_vals = NULL;
+    return 0;
+}
+
+static void mag_set_required_name_attr(request_rec *req,
+                                       struct mag_conn *mc,
+                                       struct name_attr *attr)
+{
+    size_t count, len;
+    char *val = NULL, *attrval = NULL;
+
+    /* Count the existing name attribute and value pairs. Both
+     * required_name_attrs and required_name_vals are allocated together and
+     * hold the same number of strings, with pairs corresponding by index. */
+    for (count = 0; mc->required_name_attrs != NULL &&
+                    mc->required_name_attrs[count] != NULL &&
+                    mc->required_name_vals != NULL &&
+                    mc->required_name_vals[count] != NULL; count++);
+
+    /* Prefer a display value string. */
+    if (attr->display_value.length != 0) {
+        len = attr->display_value.length;
+        attrval = attr->display_value.value;
+    } else if (attr->value.length != 0) {
+        len = attr->value.length;
+        attrval = attr->value.value;
+    } else {
+        ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, req,
+                      "no name attribute value available");
+        return;
+    }
+
+    /* Prepend the value length. */
+    val = apr_pcalloc(mc->pool, sizeof(len) + len + 1);
+    memcpy(val, &len, sizeof(len));
+    memcpy(val + sizeof(len), attrval, len);
+
+    /* Allocate/realloc a new bunch. */
+    if (count % 16 == 0) {
+        size_t size = sizeof(*mc->required_name_attrs) * (count + 16 + 2);
+        mc->required_name_attrs = realloc(mc->required_name_attrs, size);
+        mc->required_name_vals = realloc(mc->required_name_vals, size);
+        if (!mc->required_name_attrs || !mc->required_name_vals) {
+            apr_pool_abort_get(mc->pool)(ENOMEM);
+        }
+        apr_pool_userdata_setn(mc, GSS_NAME_ATTR_USERDATA,
+                               mag_mc_req_name_attrs_cleanup, mc->pool);
+    }
+
+    mc->required_name_attrs[count] = apr_pstrndup(mc->pool, attr->name.value,
+                                                  attr->name.length);
+    mc->required_name_attrs[count + 1] = NULL;
+    mc->required_name_vals[count] = val;
+    mc->required_name_vals[count + 1] = NULL;
+
+    ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, req,
+                  "found name attribute '%s' with length %lu",
+                  mc->required_name_attrs[count], len);
+    ap_log_rdata(APLOG_MARK, APLOG_DEBUG, req, mc->required_name_attrs[count],
+                 mc->required_name_vals[count] + sizeof(len), len, 0);
+}
+
 static void mc_add_name_attribute(struct mag_conn *mc,
                                   const char *name, const char *value)
 {
@@ -221,17 +290,17 @@ gss_buffer_desc empty_buffer = GSS_C_EMPTY_BUFFER;
 void mag_get_name_attributes(request_rec *req, struct mag_config *cfg,
                              gss_name_t name, struct mag_conn *mc)
 {
-    if (!cfg->name_attributes) {
-        return;
-    }
-
     uint32_t maj, min;
     gss_buffer_set_t attrs = GSS_C_NO_BUFFER_SET;
     struct name_attr attr;
     char *json = NULL;
     char *error;
-    int count = 0;
-    int i, j;
+    int count = 0, map_count = 0;
+    int i;
+
+    if (!cfg->name_attributes && !cfg->required_na_expr) {
+        return;
+    }
 
     maj = gss_inquire_name(&min, name, NULL, NULL, &attrs);
     if (GSS_ERROR(maj)) {
@@ -242,40 +311,43 @@ void mag_get_name_attributes(request_rec *req, struct mag_config *cfg,
     }
 
     if (!attrs || attrs->count == 0) {
-        mc_add_name_attribute(mc, "GSS_NAME_ATTR_ERROR", "0 attributes found");
+        if (cfg->name_attributes) {
+            mc_add_name_attribute(mc, "GSS_NAME_ATTR_ERROR", "0 attributes found");
+        }
+        ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, req, "no name attributes found");
     }
 
-    if (cfg->name_attributes->output_json) {
+    if (attrs) {
+        count = attrs->count;
+    }
 
-        if (attrs) count = attrs->count;
+    if (cfg->name_attributes) {
+        map_count = cfg->name_attributes->map_count;
+    }
 
+    if (cfg->name_attributes && cfg->name_attributes->output_json) {
         json = apr_psprintf(req->pool,
                             "{\"name\":\"%s\",\"attributes\":{",
                             mc->gss_name);
-    } else {
-        count = cfg->name_attributes->map_count;
     }
 
+    /* Collect all name attributes */
     for (i = 0; i < count; i++) {
-
         memset(&attr, 0, sizeof(struct name_attr));
 
-        if (cfg->name_attributes->output_json) {
-            attr.name = attrs->elements[i];
-            for (j = 0; j < cfg->name_attributes->map_count; j++) {
+        attr.name = attrs->elements[i];
+        if (map_count) {
+            /* Use the environment variable name matching the attribute name
+             * from the map. */
+            for (int j = 0; j < map_count; j++) {
                 if (strncmp(cfg->name_attributes->map[j].attr_name,
-                            attrs->elements[i].value,
-                            attrs->elements[i].length) == 0) {
+                            attr.name.value,
+                            attr.name.length) == 0) {
                     attr.env_name = cfg->name_attributes->map[j].env_name;
                     break;
                 }
             }
-        } else {
-            attr.name.length = strlen(cfg->name_attributes->map[i].attr_name);
-            attr.name.value = cfg->name_attributes->map[i].attr_name;
-            attr.env_name = cfg->name_attributes->map[i].env_name;
         }
-
         attr.number = 0;
         attr.more = -1;
         do {
@@ -283,13 +355,25 @@ void mag_get_name_attributes(request_rec *req, struct mag_config *cfg,
             attr.value = empty_buffer;
             attr.display_value = empty_buffer;
 
-            if (!mag_get_name_attr(req, name, &attr)) break;
+            /* Fetch the next attribute value. */
+            if (!mag_get_name_attr(req, name, &attr)) {
+                break;
+            }
 
-            if (cfg->name_attributes->output_json) {
+            /* Add as a JSON value if needed. */
+            if (cfg->name_attributes && cfg->name_attributes->output_json) {
                 mag_add_json_name_attr(req, i == 0, &attr, &json);
             }
+
+            /* Add as an environment variable if needed. */
             if (attr.env_name) {
                 mag_set_env_name_attr(req, mc, &attr);
+            }
+
+            /* Add to the list of name attributes lined up for the requirement
+             * check if needed. */
+            if (cfg->required_na_expr) {
+                mag_set_required_name_attr(req, mc, &attr);
             }
 
             gss_release_buffer(&min, &attr.value);
@@ -297,7 +381,7 @@ void mag_get_name_attributes(request_rec *req, struct mag_config *cfg,
         } while (attr.more != 0);
     }
 
-    if (cfg->name_attributes->output_json) {
+    if (cfg->name_attributes && cfg->name_attributes->output_json) {
         json = apr_psprintf(req->pool, "%s}}", json);
         mc_add_name_attribute(mc, "GSS_NAME_ATTRS_JSON", json);
     }
@@ -391,6 +475,14 @@ void mag_set_req_data(request_rec *req,
 
     ap_set_module_config(req->request_config, &auth_gssapi_module, mc->env);
     mag_export_req_env(req, mc->env);
+}
+
+void mag_set_req_attr_fail(request_rec *req, struct mag_config *cfg,
+                           struct mag_conn *mc)
+{
+    apr_table_set(mc->env, "GSS_NAME_ATTR_ERROR",
+                  "required name attributes check unsatisfied");
+    mag_set_req_data(req, cfg, mc);
 }
 
 void mag_publish_error(request_rec *req, uint32_t maj, uint32_t min,
