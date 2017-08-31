@@ -1593,7 +1593,6 @@ static const char *mag_deleg_ccache_perms(cmd_parms *parms, void *mconfig,
 }
 #endif
 
-#ifdef HAVE_GSS_ACQUIRE_CRED_WITH_PASSWORD
 static const char *mag_use_basic_auth(cmd_parms *parms, void *mconfig, int on)
 {
     struct mag_config *cfg = (struct mag_config *)mconfig;
@@ -1601,7 +1600,6 @@ static const char *mag_use_basic_auth(cmd_parms *parms, void *mconfig, int on)
     cfg->use_basic_auth = on ? true : false;
     return NULL;
 }
-#endif
 
 static bool mag_list_of_mechs(cmd_parms *parms, gss_OID_set *oidset,
                               const char *w)
@@ -1753,7 +1751,6 @@ static const char *required_name_attrs(cmd_parms *parms, void *mconfig,
     return NULL;
 }
 
-#ifdef HAVE_GSS_ACQUIRE_CRED_WITH_PASSWORD
 static const char *mag_basic_auth_mechs(cmd_parms *parms, void *mconfig,
                                         const char *w)
 {
@@ -1764,7 +1761,6 @@ static const char *mag_basic_auth_mechs(cmd_parms *parms, void *mconfig,
 
     return NULL;
 }
-#endif
 
 static const char *mag_acceptor_name(cmd_parms *parms, void *mconfig,
                                      const char *w)
@@ -1848,12 +1844,10 @@ static const command_rec mag_commands[] = {
                "Do impersonation call (S4U2Self) "
                "based on already authentication username"),
 #endif
-#ifdef HAVE_GSS_ACQUIRE_CRED_WITH_PASSWORD
     AP_INIT_FLAG("GssapiBasicAuth", mag_use_basic_auth, NULL, OR_AUTHCFG,
                      "Allows use of Basic Auth for authentication"),
     AP_INIT_ITERATE("GssapiBasicAuthMech", mag_basic_auth_mechs, NULL,
                     OR_AUTHCFG, "Mechanisms to use for basic auth"),
-#endif
     AP_INIT_ITERATE("GssapiAllowedMech", mag_allow_mech, NULL, OR_AUTHCFG,
                     "Allowed Mechanisms"),
     AP_INIT_FLAG("GssapiNegotiateOnce", mag_negotiate_once, NULL, OR_AUTHCFG,
