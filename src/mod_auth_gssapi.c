@@ -1286,7 +1286,9 @@ static void *mag_create_dir_config(apr_pool_t *p, char *dir)
 
     cfg = (struct mag_config *)apr_pcalloc(p, sizeof(struct mag_config));
     cfg->pool = p;
+#ifdef HAVE_CRED_STORE
     cfg->ccname_envvar = "KRB5CCNAME";
+#endif
 
     return cfg;
 }
