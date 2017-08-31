@@ -46,10 +46,8 @@
 
 #define MIN_SESS_EXP_TIME 300 /* 5 minutes validity minimum */
 
-#ifdef HAVE_GSS_ACQUIRE_CRED_FROM
-#  ifdef HAVE_GSS_STORE_CRED_INTO
-#define HAVE_CRED_STORE 1
-#  endif
+#if defined(HAVE_GSS_ACQUIRE_CRED_FROM) && defined(HAVE_GSS_STORE_CRED_INTO)
+#  define HAVE_CRED_STORE 1
 #endif
 
 extern module AP_MODULE_DECLARE_DATA auth_gssapi_module;

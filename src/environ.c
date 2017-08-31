@@ -399,11 +399,15 @@ static void mag_set_name_attributes(request_rec *req, struct mag_conn *mc)
 static void mag_set_ccname_envvar(request_rec *req, struct mag_config *cfg,
                                   struct mag_conn *mc)
 {
+#ifdef HAVE_CRED_STORE
     apr_status_t status;
     apr_int32_t wanted = APR_FINFO_MIN | APR_FINFO_OWNER | APR_FINFO_PROT;
     apr_finfo_t finfo = { 0 };
     char *path;
     char *value;
+
+    if (!cfg->deleg_ccache_dir || !mc->delegated || !mc->ccname)
+        return;
 
     path = apr_psprintf(req->pool, "%s/%s", cfg->deleg_ccache_dir, mc->ccname);
 
@@ -441,6 +445,7 @@ static void mag_set_ccname_envvar(request_rec *req, struct mag_config *cfg,
 
     value = apr_psprintf(req->pool, "FILE:%s", path);
     apr_table_set(mc->env, cfg->ccname_envvar, value);
+#endif
 }
 
 void mag_export_req_env(request_rec *req, apr_table_t *env)
@@ -467,11 +472,7 @@ void mag_set_req_data(request_rec *req,
         mag_set_name_attributes(req, mc);
     }
 
-#ifdef HAVE_CRED_STORE
-    if (cfg->deleg_ccache_dir && mc->delegated && mc->ccname) {
-        mag_set_ccname_envvar(req, cfg, mc);
-    }
-#endif
+    mag_set_ccname_envvar(req, cfg, mc);
 
     ap_set_module_config(req->request_config, &auth_gssapi_module, mc->env);
     mag_export_req_env(req, mc->env);
