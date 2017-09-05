@@ -489,12 +489,10 @@ static bool mag_auth_basic(request_rec *req,
                            gss_cred_id_t *delegated_cred,
                            uint32_t *vtime)
 {
-#ifdef HAVE_GSS_KRB5_CCACHE_NAME
     const char *user_ccache = NULL;
     const char *orig_ccache = NULL;
     long long unsigned int rndname;
     apr_status_t rs;
-#endif
     gss_name_t user = GSS_C_NO_NAME;
     gss_cred_id_t user_cred = GSS_C_NO_CREDENTIAL;
     gss_cred_id_t server_cred = GSS_C_NO_CREDENTIAL;
@@ -555,7 +553,6 @@ static bool mag_auth_basic(request_rec *req,
         allowed_mechs = filtered_mechs;
     }
 
-#ifdef HAVE_GSS_KRB5_CCACHE_NAME
     /* If we are using the krb5 mechanism make sure to set a per thread
      * memory ccache so that there can't be interferences between threads.
      * Also make sure we have  new cache so no cached results end up being
@@ -585,7 +582,6 @@ static bool mag_auth_basic(request_rec *req,
             goto done;
         }
     }
-#endif
 
     maj = gss_acquire_cred_with_password(&min, user, &ba_pwd,
                                          GSS_C_INDEFINITE,
@@ -621,7 +617,7 @@ done:
     gss_release_cred(&min, &user_cred);
     gss_release_oid_set(&min, &actual_mechs);
     gss_release_oid_set(&min, &filtered_mechs);
-#ifdef HAVE_GSS_KRB5_CCACHE_NAME
+
     if (user_ccache != NULL) {
         maj = gss_krb5_ccache_name(&min, orig_ccache, NULL);
         if (maj != GSS_S_COMPLETE) {
@@ -631,7 +627,7 @@ done:
                                     "failed", maj, min));
         }
     }
-#endif
+
     return ret;
 }
 
@@ -1290,7 +1286,9 @@ static void *mag_create_dir_config(apr_pool_t *p, char *dir)
 
     cfg = (struct mag_config *)apr_pcalloc(p, sizeof(struct mag_config));
     cfg->pool = p;
+#ifdef HAVE_CRED_STORE
     cfg->ccname_envvar = "KRB5CCNAME";
+#endif
 
     return cfg;
 }
@@ -1597,7 +1595,6 @@ static const char *mag_deleg_ccache_perms(cmd_parms *parms, void *mconfig,
 }
 #endif
 
-#ifdef HAVE_GSS_ACQUIRE_CRED_WITH_PASSWORD
 static const char *mag_use_basic_auth(cmd_parms *parms, void *mconfig, int on)
 {
     struct mag_config *cfg = (struct mag_config *)mconfig;
@@ -1605,7 +1602,6 @@ static const char *mag_use_basic_auth(cmd_parms *parms, void *mconfig, int on)
     cfg->use_basic_auth = on ? true : false;
     return NULL;
 }
-#endif
 
 static bool mag_list_of_mechs(cmd_parms *parms, gss_OID_set *oidset,
                               const char *w)
@@ -1757,7 +1753,6 @@ static const char *required_name_attrs(cmd_parms *parms, void *mconfig,
     return NULL;
 }
 
-#ifdef HAVE_GSS_ACQUIRE_CRED_WITH_PASSWORD
 static const char *mag_basic_auth_mechs(cmd_parms *parms, void *mconfig,
                                         const char *w)
 {
@@ -1768,7 +1763,6 @@ static const char *mag_basic_auth_mechs(cmd_parms *parms, void *mconfig,
 
     return NULL;
 }
-#endif
 
 static const char *mag_acceptor_name(cmd_parms *parms, void *mconfig,
                                      const char *w)
@@ -1852,12 +1846,10 @@ static const command_rec mag_commands[] = {
                "Do impersonation call (S4U2Self) "
                "based on already authentication username"),
 #endif
-#ifdef HAVE_GSS_ACQUIRE_CRED_WITH_PASSWORD
     AP_INIT_FLAG("GssapiBasicAuth", mag_use_basic_auth, NULL, OR_AUTHCFG,
                      "Allows use of Basic Auth for authentication"),
     AP_INIT_ITERATE("GssapiBasicAuthMech", mag_basic_auth_mechs, NULL,
                     OR_AUTHCFG, "Mechanisms to use for basic auth"),
-#endif
     AP_INIT_ITERATE("GssapiAllowedMech", mag_allow_mech, NULL, OR_AUTHCFG,
                     "Allowed Mechanisms"),
     AP_INIT_FLAG("GssapiNegotiateOnce", mag_negotiate_once, NULL, OR_AUTHCFG,

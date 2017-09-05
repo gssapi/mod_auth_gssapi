@@ -78,10 +78,12 @@ else
 fi
 AC_CHECK_LIB([gssapi_krb5], [gss_accept_sec_context], [],
              [AC_MSG_ERROR([GSSAPI library check failed])])
+AC_CHECK_FUNCS(gss_krb5_ccache_name, [],
+               [AC_MSG_ERROR([gss_krb5_ccache_name() not found])])
+AC_CHECK_FUNCS(gss_acquire_cred_with_password, [],
+               [AC_MSG_ERROR([gss_acquire_with_password() not found])])
 AC_CHECK_FUNCS(gss_acquire_cred_from)
 AC_CHECK_FUNCS(gss_store_cred_into)
-AC_CHECK_FUNCS(gss_acquire_cred_with_password)
-AC_CHECK_FUNCS(gss_krb5_ccache_name)
 
 AC_SUBST([GSSAPI_CFLAGS])
 AC_SUBST([GSSAPI_LIBS])
