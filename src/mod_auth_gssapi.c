@@ -835,6 +835,51 @@ static gss_OID_set mag_get_negotiate_mechs(apr_pool_t *p, gss_OID_set desired)
     }
 }
 
+
+static const char *add_authn_provider(cmd_parms *cmd, void *config,
+                                      const char *arg)
+{
+    struct mag_config *conf = (struct mag_config *)config;
+    authn_provider_list *newp;
+
+    newp = apr_pcalloc(cmd->pool, sizeof(authn_provider_list));
+    newp->provider_name = arg;
+
+    /* lookup and cache the actual provider now */
+    newp->provider = ap_lookup_provider(AUTHN_PROVIDER_GROUP,
+                                        newp->provider_name,
+                                        AUTHN_PROVIDER_VERSION);
+
+    if (newp->provider == NULL) {
+        /* by the time they use it, the provider should be loaded and
+           registered with us. */
+        return apr_psprintf(cmd->pool,
+                            "Unknown Authn provider: %s",
+                            newp->provider_name);
+    }   
+
+    if (!newp->provider->check_password) {
+        /* if it doesn't provide the appropriate function, reject it */
+        return apr_psprintf(cmd->pool,
+                            "The '%s' Authn provider doesn't support "
+                            "Basic Authentication", newp->provider_name);
+    }   
+
+    /* Add it to the list now. */
+    if (!conf->providers) {
+        conf->providers = newp;
+    }   
+    else {
+        authn_provider_list *last = conf->providers;
+
+        while (last->next) {
+            last = last->next;
+        }   
+        last->next = newp;
+    }   
+    return NULL;
+}
+
 static int mag_auth(request_rec *req)
 {
     const char *type;
@@ -868,6 +913,8 @@ static int mag_auth(request_rec *req)
     if ((type == NULL) || (strcasecmp(type, "GSSAPI") != 0)) {
         return DECLINED;
     }
+    ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, req,
+               "URI: %s: type is: %s mag_auth", req->uri ?: "no-uri", type);
 
     req_cfg = mag_init_cfg(req);
 
@@ -897,42 +944,47 @@ static int mag_auth(request_rec *req)
                 main_req = main_req->prev;
 
         type = ap_auth_type(main_req);
-        if ((type != NULL) && (strcasecmp(type, "GSSAPI") == 0)) {
-            /* warn if the subrequest location and the main request
-             * location have different configs */
-            if (cfg != ap_get_module_config(main_req->per_dir_config,
-                                            &auth_gssapi_module)) {
-                ap_log_rerror(APLOG_MARK, APLOG_WARNING, 0,
-                              req, "Subrequest authentication bypass on "
-                                   "location with different configuration!");
-            }
-            if (main_req->user) {
-                apr_table_t *env;
-
-                req->user = apr_pstrdup(req->pool, main_req->user);
-                req->ap_auth_type = main_req->ap_auth_type;
-
-                env = ap_get_module_config(main_req->request_config,
-                                           &auth_gssapi_module);
-                if (!env) {
-                    ap_log_rerror(APLOG_MARK, APLOG_WARNING, 0, req,
-                                  "Failed to lookup env table in subrequest");
-                } else
-                    mag_export_req_env(req, env);
-
-                return OK;
-            } else {
-                ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
-                              "The main request is tasked to establish the "
-                              "security context, can't proceed!");
-                return HTTP_UNAUTHORIZED;
-            }
+        if (apr_table_get(main_req->notes, "AUTH_BASIC_FORWARD") != NULL) {
+            ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0,
+                                  req, "auth_type: %s user: %s main req used auth basic.", type, main_req->user);
         } else {
-            ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, req,
-                          "Subrequest GSSAPI auth with no auth on the main "
-                          "request. This operation may fail if other "
-                          "subrequests already established a context or the "
-                          "mechanism requires multiple roundtrips.");
+            if ((type != NULL) && (strcasecmp(type, "GSSAPI") == 0)) {
+                /* warn if the subrequest location and the main request
+                 * location have different configs */
+                if (cfg != ap_get_module_config(main_req->per_dir_config,
+                                                &auth_gssapi_module)) {
+                    ap_log_rerror(APLOG_MARK, APLOG_WARNING, 0,
+                                  req, "Subrequest authentication bypass on "
+                                       "location with different configuration!");
+                }
+                if (main_req->user) {
+                    apr_table_t *env;
+
+                    req->user = apr_pstrdup(req->pool, main_req->user);
+                    req->ap_auth_type = main_req->ap_auth_type;
+
+                    env = ap_get_module_config(main_req->request_config,
+                                               &auth_gssapi_module);
+                    if (!env) {
+                        ap_log_rerror(APLOG_MARK, APLOG_WARNING, 0, req,
+                                      "Failed to lookup env table in subrequest");
+                    } else
+                        mag_export_req_env(req, env);
+
+                    return OK;
+                } else {
+                    ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
+                                  "The main request is tasked to establish the "
+                                  "security context, can't proceed!");
+                    return HTTP_UNAUTHORIZED;
+                }
+            } else {
+                ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, req,
+                              "Subrequest GSSAPI auth with no auth on the main "
+                              "request. This operation may fail if other "
+                              "subrequests already established a context or the "
+                              "mechanism requires multiple roundtrips.");
+            }
         }
     }
 
@@ -1024,7 +1076,7 @@ static int mag_auth(request_rec *req)
         }
         break;
     case AUTH_TYPE_BASIC:
-        if (!cfg->use_basic_auth) {
+        if (cfg->use_basic_auth == BA_OFF) {
             goto done;
         }
 
@@ -1042,6 +1094,59 @@ static int mag_auth(request_rec *req)
         }
         ba_user.length = strlen(ba_user.value);
         ba_pwd.length = strlen(ba_pwd.value);
+
+        if (cfg->use_basic_auth == BA_FORWARD) {
+            authn_provider_list *current_provider;
+            authn_status auth_result = AUTHZ_GENERAL_ERROR;
+            ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, req,
+                          "BA_FORWARD: forward auth to providers");
+
+            // overwrite AUTH_TYPE_BASIC => it's basic now
+            auth_type = AUTH_TYPE_BASIC;
+            req->ap_auth_type = (char *) mag_str_auth_type(auth_type);
+            req->user = apr_pstrdup(req->pool, ba_user.value);
+
+            current_provider = cfg->providers;
+            do {
+                const authn_provider *provider;
+
+                provider = current_provider->provider;
+                apr_table_setn(req->notes, AUTHN_PROVIDER_NAME_NOTE, current_provider->provider_name);
+
+                auth_result = provider->check_password(req, ba_user.value, ba_pwd.value);
+
+                apr_table_unset(req->notes, AUTHN_PROVIDER_NAME_NOTE);
+
+                ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, req,
+                          "BA_FORWARD: provider: %s result: %d", current_provider->provider_name, auth_result);
+
+                /* Something occurred. Stop checking. */
+                if (auth_result != AUTH_USER_NOT_FOUND) {
+                    break;
+                }
+
+                /* If we're not really configured for providers, stop now. */
+                if (!cfg->providers) {
+                    break;
+                }
+
+                current_provider = current_provider->next;
+            } while (current_provider);
+
+            ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, req,
+                          "BA_FORWARD: End of loop provider: %s result: %d", current_provider->provider_name, auth_result);
+
+            apr_table_setn(req->notes, "AUTH_BASIC_FORWARD", "1");
+
+            if (auth_result == AUTH_GRANTED) {
+                ret = OK;
+                goto done;
+            }
+
+            ret = HTTP_UNAUTHORIZED;
+            goto done;
+        }
+
 
         if (mc->is_preserved && mc->established &&
             mag_basic_check(req_cfg, mc, ba_user, ba_pwd)) {
@@ -1171,7 +1276,7 @@ done:
                               "NTLM");
             }
         }
-        if (cfg->use_basic_auth) {
+        if (cfg->use_basic_auth != BA_OFF) {
             apr_table_add(req->err_headers_out, req_cfg->rep_proto,
                           apr_psprintf(req->pool, "Basic realm=\"%s\"",
                                        ap_auth_name(req)));
@@ -1598,11 +1703,18 @@ static const char *mag_deleg_ccache_perms(cmd_parms *parms, void *mconfig,
 #endif
 
 #ifdef HAVE_GSS_ACQUIRE_CRED_WITH_PASSWORD
-static const char *mag_use_basic_auth(cmd_parms *parms, void *mconfig, int on)
+static const char *mag_use_basic_auth(cmd_parms *parms, void *mconfig,
+                                      const char *value)
 {
     struct mag_config *cfg = (struct mag_config *)mconfig;
 
-    cfg->use_basic_auth = on ? true : false;
+    if (strcasecmp(value, "on") == 0) {
+        cfg->use_basic_auth = BA_ON;
+    } else if (strcasecmp(value, "forward") == 0) {
+        cfg->use_basic_auth = BA_FORWARD;
+    } else {
+        cfg->use_basic_auth = BA_OFF;
+    }
     return NULL;
 }
 #endif
@@ -1821,6 +1933,8 @@ static void *mag_create_server_config(apr_pool_t *p, server_rec *s)
 }
 
 static const command_rec mag_commands[] = {
+    AP_INIT_ITERATE("AuthBasicProvider", add_authn_provider, NULL, OR_AUTHCFG,
+                    "specify the auth providers for a directory or location"),
     AP_INIT_FLAG("GssapiSSLonly", mag_ssl_only, NULL, OR_AUTHCFG,
                   "Work only if connection is SSL Secured"),
     AP_INIT_FLAG("GssapiLocalName", mag_map_to_local, NULL, OR_AUTHCFG,
@@ -1853,7 +1967,7 @@ static const command_rec mag_commands[] = {
                "based on already authentication username"),
 #endif
 #ifdef HAVE_GSS_ACQUIRE_CRED_WITH_PASSWORD
-    AP_INIT_FLAG("GssapiBasicAuth", mag_use_basic_auth, NULL, OR_AUTHCFG,
+    AP_INIT_TAKE1("GssapiBasicAuth", mag_use_basic_auth, NULL, OR_AUTHCFG,
                      "Allows use of Basic Auth for authentication"),
     AP_INIT_ITERATE("GssapiBasicAuthMech", mag_basic_auth_mechs, NULL,
                     OR_AUTHCFG, "Mechanisms to use for basic auth"),

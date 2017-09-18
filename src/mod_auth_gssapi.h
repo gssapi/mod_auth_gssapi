@@ -19,6 +19,9 @@
 #include <mod_session.h>
 #include <mod_ssl.h>
 
+#include <ap_provider.h>
+#include <mod_auth.h>
+
 /* apache's httpd.h drags in empty PACKAGE_* variables.
  * undefine them to avoid annoying compile warnings as they
  * are re-defined in config.h */
@@ -86,7 +89,11 @@ struct mag_config {
 #endif
     struct seal_key *mag_skey;
 
-    bool use_basic_auth;
+    enum {
+        BA_OFF = 0,
+        BA_FORWARD = 1,
+        BA_ON = 2
+    } use_basic_auth;
     gss_OID_set_desc *allowed_mechs;
     gss_OID_set_desc *basic_mechs;
     bool negotiate_once;
@@ -95,6 +102,7 @@ struct mag_config {
     bool enverrs;
     gss_name_t acceptor_name;
     bool acceptor_name_from_req;
+    authn_provider_list *providers;
 };
 
 struct mag_server_config {
