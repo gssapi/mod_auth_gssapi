@@ -142,3 +142,5 @@ struct mag_conn {
 struct mag_conn *mag_new_conn_ctx(apr_pool_t *pool);
 const char *mag_str_auth_type(int auth_type);
 char *mag_error(apr_pool_t *pool, const char *msg, uint32_t maj, uint32_t min);
+int mag_get_user_uid(const char *name, uid_t *uid);
+int mag_get_group_gid(const char *name, gid_t *gid);

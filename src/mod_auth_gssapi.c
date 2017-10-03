@@ -1518,7 +1518,7 @@ static const char *mag_deleg_ccache_dir(cmd_parms *parms, void *mconfig,
 #define CCMODE "mode:"
 #define CCUID "uid:"
 #define CCGID "gid:"
-#define NSS_BUF_LEN 2048 /* just use a uid/gid number if not big enough */
+
 static const char *mag_deleg_ccache_perms(cmd_parms *parms, void *mconfig,
                                           const char *w)
 {
@@ -1552,15 +1552,11 @@ static const char *mag_deleg_ccache_perms(cmd_parms *parms, void *mconfig,
                 cfg->deleg_ccache_uid = 0;
             }
         } else {
-            struct passwd pwd, *user;
-            char buf[NSS_BUF_LEN];
-            int ret = getpwnam_r(p, &pwd, buf, NSS_BUF_LEN, &user);
-            if ((ret != 0) || user != &pwd) {
+            int ret = mag_get_user_uid(p, &cfg->deleg_ccache_uid);
+            if (ret != 0) {
                 ap_log_error(APLOG_MARK, APLOG_ERR, 0, parms->server,
-                             "Invalid GssapiDelegCcachePerms uid value [%s]",
-                             p);
-            } else {
-                cfg->deleg_ccache_uid = user->pw_uid;
+                    "Invalid GssapiDelegCcachePerms uid value [%s](%s)",
+                    p, strerror(ret));
             }
         }
     } else if (strncmp(w, CCGID, sizeof(CCGID) - 1) == 0) {
@@ -1577,15 +1573,11 @@ static const char *mag_deleg_ccache_perms(cmd_parms *parms, void *mconfig,
                 cfg->deleg_ccache_gid = 0;
             }
         } else {
-            struct group grp, *group;
-            char buf[NSS_BUF_LEN];
-            int ret = getgrnam_r(p, &grp, buf, NSS_BUF_LEN, &group);
-            if ((ret != 0) || group != &grp) {
+            int ret = mag_get_group_gid(p, &cfg->deleg_ccache_gid);
+            if (ret != 0) {
                 ap_log_error(APLOG_MARK, APLOG_ERR, 0, parms->server,
-                             "Invalid GssapiDelegCcachePerms gid value [%s]",
-                             p);
-            } else {
-                cfg->deleg_ccache_gid = group->gr_gid;
+                    "Invalid GssapiDelegCcachePerms gid value [%s](%s)",
+                    p, strerror(ret));
             }
         }
     } else {
