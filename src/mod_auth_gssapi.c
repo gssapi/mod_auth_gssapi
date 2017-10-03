@@ -1544,7 +1544,7 @@ static const char *mag_deleg_ccache_perms(cmd_parms *parms, void *mconfig,
         if (isdigit(*p)) {
             char *endptr;
             cfg->deleg_ccache_uid = strtol(p, &endptr, 0);
-            if (errno != 0 || endptr != '\0') {
+            if (errno != 0 || (endptr && *endptr != '\0')) {
                 ap_log_error(APLOG_MARK, APLOG_ERR, 0, parms->server,
                              "Invalid GssapiDelegCcachePerms uid value [%s]",
                              p);
@@ -1569,7 +1569,7 @@ static const char *mag_deleg_ccache_perms(cmd_parms *parms, void *mconfig,
         if (isdigit(*p)) {
             char *endptr;
             cfg->deleg_ccache_gid = strtol(p, &endptr, 0);
-            if (errno != 0 || endptr != '\0') {
+            if (errno != 0 || (endptr && *endptr != '\0')) {
                 ap_log_error(APLOG_MARK, APLOG_ERR, 0, parms->server,
                              "Invalid GssapiDelegCcachePerms gid value [%s]",
                              p);
