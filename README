@@ -451,3 +451,21 @@ Note: The GSS_C_NT_HOSTBASED_SERVICE format is used for names (see example).
 #### Example
     GssapiAcceptorName HTTP@www.example.com
 
+Environment Variables
+---------------------
+
+(Note: these are not process environment variables, but rather Apache
+environment variables, as described
+[in the apache docs](https://httpd.apache.org/docs/2.4/env.html).)
+
+### gssapi-no-negotiate
+
+This environment variable is used to suppress setting Negotiate headers.  Not
+sending these headers is useful to work around browsers that do not handle
+them properly (and incorrectly show authentication popups to users).
+
+#### Example
+
+For instance, to suppress negotiation on Windows browsers, one could set:
+
+    BrowserMatch Windows gssapi-no-negotiate
