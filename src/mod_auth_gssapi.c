@@ -92,6 +92,19 @@ static const char *mag_err_text(enum mag_err_code err)
     }
 }
 
+static void mag_post_info(request_rec *req, struct mag_config *cfg,
+                          enum mag_err_code err, const char *msg)
+{
+    const char *text = NULL;
+
+    if (cfg->enverrs) {
+        mag_publish_error(req, 0, 0, text ? text : msg, mag_err_text(err));
+    }
+
+    ap_log_rerror(APLOG_MARK, APLOG_INFO, 0, req, "%s %s", mag_err_text(err),
+                  text ? text : msg);
+}
+
 static void mag_post_error(request_rec *req, struct mag_config *cfg,
                            enum mag_err_code err, uint32_t maj, uint32_t min,
                            const char *msg)
@@ -982,8 +995,8 @@ static int mag_auth(request_rec *req)
 
     /* We can proceed only if we do have an auth header */
     if (!auth_header) {
-        mag_post_error(req, cfg, MAG_NO_AUTH, 0, 0,
-                       "Client did not send any authentication headers");
+        mag_post_info(req, cfg, MAG_NO_AUTH,
+                      "Client did not send any authentication headers");
         goto done;
     }
 
