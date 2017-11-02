@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 # Copyright (C) 2017 - mod_auth_gssapi contributors, see COPYING for license.
 
 import os

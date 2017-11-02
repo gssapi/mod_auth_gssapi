@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 # Copyright (C) 2015 - mod_auth_gssapi contributors, see COPYING for license.
 
 import argparse
@@ -395,7 +395,6 @@ def setup_keys(tesdir, env):
 
 
 def setup_http(testdir, so_dir, wrapenv):
-
     httpdir = os.path.join(testdir, 'httpd')
     if os.path.exists(httpdir):
         shutil.rmtree(httpdir)
@@ -705,6 +704,10 @@ if __name__ == '__main__':
 
         keysenv = setup_keys(testdir, kdcenv)
         testenv = kinit_user(testdir, kdcenv)
+
+        # support virtualenv
+        testenv['PATH'] = os.environ.get('PATH', '')
+        testenv['ViRTUAL_ENV'] = os.environ.get('VIRTUAL_ENV', '')
 
         testenv['DELEGCCACHE'] = os.path.join(testdir, 'httpd',
                                               USR_NAME + '@' + TESTREALM)
