@@ -10,6 +10,9 @@ EXTRA_DIST = \
 	t_basic_k5.py \
 	t_basic_k5_two_users.py \
 	t_basic_proxy.py \
+	t_hostname_acceptor.py \
+	t_nonego.py \
+	t_required_name_attr.py \
 	t_spnego_negotiate_once.py \
 	t_spnego_no_auth.py \
 	t_spnego_proxy.py \
