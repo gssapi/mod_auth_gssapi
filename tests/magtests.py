@@ -482,6 +482,7 @@ def test_spnego_auth(testdir, testenv, testlog):
     spnegodir = os.path.join(testdir, 'httpd', 'html', 'spnego')
     os.mkdir(spnegodir)
     shutil.copy('tests/index.html', spnegodir)
+    error_count = 0
 
     with (open(testlog, 'a')) as logfile:
         spnego = subprocess.Popen(["tests/t_spnego.py"],
@@ -490,6 +491,7 @@ def test_spnego_auth(testdir, testenv, testlog):
         spnego.wait()
         if spnego.returncode != 0:
             sys.stderr.write('SPNEGO: FAILED\n')
+            error_count += 1
         else:
             sys.stderr.write('SPNEGO: SUCCESS\n')
 
@@ -500,6 +502,7 @@ def test_spnego_auth(testdir, testenv, testlog):
         spnego.wait()
         if spnego.returncode != 0:
             sys.stderr.write('SPNEGO Proxy Auth: FAILED\n')
+            error_count += 1
         else:
             sys.stderr.write('SPNEGO Proxy Auth: SUCCESS\n')
 
@@ -510,9 +513,10 @@ def test_spnego_auth(testdir, testenv, testlog):
         spnego.wait()
         if spnego.returncode != 0:
             sys.stderr.write('SPNEGO No Auth: FAILED\n')
+            error_count += 1
         else:
             sys.stderr.write('SPNEGO No Auth: SUCCESS\n')
-
+    return error_count
 
 def test_required_name_attr(testdir, testenv, testlog):
     for i in range(1, 5):
@@ -528,9 +532,10 @@ def test_required_name_attr(testdir, testenv, testlog):
         tattr.wait()
         if tattr.returncode != 0:
             sys.stderr.write('Required Name Attr: FAILED\n')
+            return 1
         else:
             sys.stderr.write('Required Name Attr: SUCCESS\n')
-
+            return 0
 
 def test_spnego_rewrite(testdir, testenv, testlog):
 
@@ -546,9 +551,10 @@ def test_spnego_rewrite(testdir, testenv, testlog):
         spnego.wait()
         if spnego.returncode != 0:
             sys.stderr.write('SPNEGO Rewrite: FAILED\n')
+            return 1
         else:
             sys.stderr.write('SPNEGO Rewrite: SUCCESS\n')
-
+            return 0
 
 def test_spnego_negotiate_once(testdir, testenv, testlog):
 
@@ -564,15 +570,17 @@ def test_spnego_negotiate_once(testdir, testenv, testlog):
         spnego.wait()
         if spnego.returncode != 0:
             sys.stderr.write('SPNEGO Negotiate Once: FAILED\n')
+            return 1
         else:
             sys.stderr.write('SPNEGO Negotiate Once: SUCCESS\n')
-
+            return 0
 
 def test_basic_auth_krb5(testdir, testenv, testlog):
 
     basicdir = os.path.join(testdir, 'httpd', 'html', 'basic_auth_krb5')
     os.mkdir(basicdir)
     shutil.copy('tests/index.html', basicdir)
+    error_count = 0
 
     with (open(testlog, 'a')) as logfile:
         basick5 = subprocess.Popen(["tests/t_basic_k5.py"],
@@ -581,6 +589,7 @@ def test_basic_auth_krb5(testdir, testenv, testlog):
         basick5.wait()
         if basick5.returncode != 0:
             sys.stderr.write('BASIC-AUTH: FAILED\n')
+            error_count += 1
         else:
             sys.stderr.write('BASIC-AUTH: SUCCESS\n')
 
@@ -591,6 +600,7 @@ def test_basic_auth_krb5(testdir, testenv, testlog):
         basick5.wait()
         if basick5.returncode != 0:
             sys.stderr.write('BASIC-AUTH Two Users: FAILED\n')
+            error_count += 1
         else:
             sys.stderr.write('BASIC-AUTH Two Users: SUCCESS\n')
 
@@ -601,6 +611,7 @@ def test_basic_auth_krb5(testdir, testenv, testlog):
         basick5.wait()
         if basick5.returncode != 0:
             sys.stderr.write('BASIC Fail Second User: FAILED\n')
+            error_count += 1
         else:
             sys.stderr.write('BASIC Fail Second User: SUCCESS\n')
 
@@ -611,9 +622,11 @@ def test_basic_auth_krb5(testdir, testenv, testlog):
         basick5.wait()
         if basick5.returncode != 0:
             sys.stderr.write('BASIC Proxy Auth: FAILED\n')
+            error_count += 1
         else:
             sys.stderr.write('BASIC Proxy Auth: SUCCESS\n')
 
+    return error_count
 
 def test_bad_acceptor_name(testdir, testenv, testlog):
 
@@ -628,9 +641,10 @@ def test_bad_acceptor_name(testdir, testenv, testlog):
         ban.wait()
         if ban.returncode != 0:
             sys.stderr.write('BAD ACCEPTOR: SUCCESS\n')
+            return 0
         else:
             sys.stderr.write('BAD ACCEPTOR: FAILED\n')
-
+            return 1
 
 def test_no_negotiate(testdir, testenv, testlog):
 
@@ -645,9 +659,10 @@ def test_no_negotiate(testdir, testenv, testlog):
         spnego.wait()
         if spnego.returncode != 0:
             sys.stderr.write('NO Negotiate: FAILED\n')
+            return 1
         else:
             sys.stderr.write('NO Negotiate: SUCCESS\n')
-
+            return 0
 
 def test_hostname_acceptor(testdir, testenv, testlog):
 
@@ -675,9 +690,10 @@ def test_hostname_acceptor(testdir, testenv, testlog):
 
         if failed:
             sys.stderr.write('HOSTNAME ACCEPTOR: FAILED\n')
+            return 1
         else:
             sys.stderr.write('HOSTNAME ACCEPTOR: SUCCESS\n')
-
+            return 0
 
 if __name__ == '__main__':
 
@@ -692,7 +708,7 @@ if __name__ == '__main__':
     processes = dict()
 
     testlog = os.path.join(testdir, 'tests.log')
-
+    errs = 0
     try:
         wrapenv = setup_wrappers(testdir)
 
@@ -711,21 +727,21 @@ if __name__ == '__main__':
 
         testenv['DELEGCCACHE'] = os.path.join(testdir, 'httpd',
                                               USR_NAME + '@' + TESTREALM)
-        test_spnego_auth(testdir, testenv, testlog)
+        errs += test_spnego_auth(testdir, testenv, testlog)
 
         testenv['MAG_GSS_NAME'] = USR_NAME + '@' + TESTREALM
-        test_spnego_rewrite(testdir, testenv, testlog)
+        errs += test_spnego_rewrite(testdir, testenv, testlog)
 
-        test_spnego_negotiate_once(testdir, testenv, testlog)
+        errs += test_spnego_negotiate_once(testdir, testenv, testlog)
 
-        test_hostname_acceptor(testdir, testenv, testlog)
+        errs += test_hostname_acceptor(testdir, testenv, testlog)
 
-        test_bad_acceptor_name(testdir, testenv, testlog)
+        errs += test_bad_acceptor_name(testdir, testenv, testlog)
 
         if os.path.exists("/usr/lib64/krb5/plugins/preauth/pkinit.so") or \
            os.path.exists("/usr/lib/x86_64-linux-gnu/krb5/plugins/preauth/pkinit.so"):
             testenv = kinit_certuser(testdir, testenv)
-            test_required_name_attr(testdir, testenv, testlog)
+            errs += test_required_name_attr(testdir, testenv, testlog)
         else:
             sys.stderr.write("krb5 PKINIT module not found, skipping name "
                              "attribute tests\n")
@@ -735,12 +751,13 @@ if __name__ == '__main__':
                    'MAG_USER_NAME_2': USR_NAME_2,
                    'MAG_USER_PASSWORD_2': USR_PWD_2}
         testenv.update(kdcenv)
-        test_basic_auth_krb5(testdir, testenv, testlog)
+        errs += test_basic_auth_krb5(testdir, testenv, testlog)
 
-        test_no_negotiate(testdir, testenv, testlog)
+        errs += test_no_negotiate(testdir, testenv, testlog)
 
     finally:
         with (open(testlog, 'a')) as logfile:
             for name in processes:
                 logfile.write("Killing %s\n" % name)
                 os.killpg(processes[name].pid, signal.SIGTERM)
+        exit(errs)
