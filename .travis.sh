@@ -8,15 +8,10 @@ fi
 
 if [ -f /etc/debian_version ]; then
     apt-get update
-    DEBIAN_FRONTEND=noninteractive apt-get -y install $COMPILER \
+    DEBIAN_FRONTEND=noninteractive apt-get -y install $COMPILER pkg-config \
                    apache2-bin {apache2,libkrb5,libssl,gss-ntlmssp}-dev \
                    python-{dev,requests,gssapi} lib{socket,nss}-wrapper \
-                   flex bison krb5-{kdc,admin-server} virtualenv pkg-config
-
-    # https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=880599 - too old
-    virtualenv --system-site-packages .venv
-    source .venv/bin/activate
-    pip install requests_kerberos
+                   flex bison krb5-{kdc,admin-server} python-requests-kerberos
 elif [ -f /etc/fedora-release ]; then
     # https://bugzilla.redhat.com/show_bug.cgi?id=1483553 means that this will
     # fail no matter what, but it will properly install the packages.
