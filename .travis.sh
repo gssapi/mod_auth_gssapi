@@ -30,6 +30,5 @@ else
 fi
 
 autoreconf -fiv
-./configure CFLAGS="$CFLAGS" CC=$(which $COMPILER)
-make
-make check
+./configure # overridden by below, but needs to generate Makefile
+make distcheck DISTCHECK_CONFIGURE_FLAGS="CFLAGS=\"$CFLAGS\" CC=$(which $COMPILER)"
