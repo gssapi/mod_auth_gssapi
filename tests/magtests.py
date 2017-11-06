@@ -195,7 +195,7 @@ subjectAltName = otherName:1.3.6.1.5.2.2;SEQUENCE:krb5princ_client
 extendedKeyUsage = 1.3.6.1.5.2.3.4
 '''
 
-def setup_test_certs(testdir, testenv, testlog):
+def setup_test_certs(testdir, testenv, logfile):
 
     opensslcnf = os.path.join(testdir, 'openssl.cnf')
     pkinit_key = os.path.join(testdir, PKINIT_KEY)
@@ -210,72 +210,70 @@ def setup_test_certs(testdir, testenv, testlog):
     with open(opensslcnf, 'w+') as f:
         f.write(text)
 
-    with (open(testlog, 'a')) as logfile:
-        print pkinit_key
-        cmd = subprocess.Popen(["openssl", "genrsa", "-out", pkinit_key,
-                                "2048"], stdout=logfile,
-                               stderr=logfile, env=testenv,
-                               preexec_fn=os.setsid)
-        cmd.wait()
-        if cmd.returncode != 0:
-            raise ValueError('Generating CA RSA key failed')
+    print pkinit_key
+    cmd = subprocess.Popen(["openssl", "genrsa", "-out", pkinit_key,
+                            "2048"], stdout=logfile,
+                           stderr=logfile, env=testenv,
+                           preexec_fn=os.setsid)
+    cmd.wait()
+    if cmd.returncode != 0:
+        raise ValueError('Generating CA RSA key failed')
 
-        testenv.update({'O_SUBJECT': 'ca'})
-        cmd = subprocess.Popen(["openssl", "req", "-config", opensslcnf,
-                                "-new", "-x509", "-extensions", "exts_ca",
-                                "-set_serial", "1", "-days", "100",
-                                "-key", pkinit_key, "-out", pkinit_ca],
-                               stdout=logfile, stderr=logfile, env=testenv,
-                               preexec_fn=os.setsid)
-        cmd.wait()
-        if cmd.returncode != 0:
-            raise ValueError('Generating CA certificate failed')
+    testenv.update({'O_SUBJECT': 'ca'})
+    cmd = subprocess.Popen(["openssl", "req", "-config", opensslcnf,
+                            "-new", "-x509", "-extensions", "exts_ca",
+                            "-set_serial", "1", "-days", "100",
+                            "-key", pkinit_key, "-out", pkinit_ca],
+                           stdout=logfile, stderr=logfile, env=testenv,
+                           preexec_fn=os.setsid)
+    cmd.wait()
+    if cmd.returncode != 0:
+        raise ValueError('Generating CA certificate failed')
 
-        testenv.update({'O_SUBJECT': 'kdc'})
-        cmd = subprocess.Popen(["openssl", "req", "-config", opensslcnf,
-                                "-new", "-subj", "/CN=kdc",
-                                "-key", pkinit_key, "-out", pkinit_kdc_req],
-                               stdout=logfile, stderr=logfile, env=testenv,
-                               preexec_fn=os.setsid)
-        cmd.wait()
-        if cmd.returncode != 0:
-            raise ValueError('Generating KDC req failed')
+    testenv.update({'O_SUBJECT': 'kdc'})
+    cmd = subprocess.Popen(["openssl", "req", "-config", opensslcnf,
+                            "-new", "-subj", "/CN=kdc",
+                            "-key", pkinit_key, "-out", pkinit_kdc_req],
+                           stdout=logfile, stderr=logfile, env=testenv,
+                           preexec_fn=os.setsid)
+    cmd.wait()
+    if cmd.returncode != 0:
+        raise ValueError('Generating KDC req failed')
 
-        cmd = subprocess.Popen(["openssl", "x509", "-extfile", opensslcnf,
-                                "-extensions", "exts_kdc", "-set_serial", "2",
-                                "-days", "100", "-req", "-CA", pkinit_ca,
-                                "-CAkey", pkinit_key, "-out", pkinit_kdc_cert,
-                                "-in", pkinit_kdc_req],
-                               stdout=logfile, stderr=logfile, env=testenv,
-                               preexec_fn=os.setsid)
-        cmd.wait()
-        if cmd.returncode != 0:
-            raise ValueError('Generating KDC certificate failed')
+    cmd = subprocess.Popen(["openssl", "x509", "-extfile", opensslcnf,
+                            "-extensions", "exts_kdc", "-set_serial", "2",
+                            "-days", "100", "-req", "-CA", pkinit_ca,
+                            "-CAkey", pkinit_key, "-out", pkinit_kdc_cert,
+                            "-in", pkinit_kdc_req],
+                           stdout=logfile, stderr=logfile, env=testenv,
+                           preexec_fn=os.setsid)
+    cmd.wait()
+    if cmd.returncode != 0:
+        raise ValueError('Generating KDC certificate failed')
 
-        testenv.update({'O_SUBJECT': 'user'})
-        cmd = subprocess.Popen(["openssl", "req", "-config", opensslcnf,
-                                "-new", "-subj", "/CN=user",
-                                "-key", pkinit_key, "-out", pkinit_user_req],
-                               stdout=logfile, stderr=logfile, env=testenv,
-                               preexec_fn=os.setsid)
-        cmd.wait()
-        if cmd.returncode != 0:
-            raise ValueError('Generating client req failed')
+    testenv.update({'O_SUBJECT': 'user'})
+    cmd = subprocess.Popen(["openssl", "req", "-config", opensslcnf,
+                            "-new", "-subj", "/CN=user",
+                            "-key", pkinit_key, "-out", pkinit_user_req],
+                           stdout=logfile, stderr=logfile, env=testenv,
+                           preexec_fn=os.setsid)
+    cmd.wait()
+    if cmd.returncode != 0:
+        raise ValueError('Generating client req failed')
 
-        cmd = subprocess.Popen(["openssl", "x509", "-extfile", opensslcnf,
-                                "-extensions", "exts_client", "-set_serial", "3",
-                                "-days", "100", "-req", "-CA", pkinit_ca,
-                                "-CAkey", pkinit_key, "-out", pkinit_user_cert,
-                                "-in", pkinit_user_req],
-                               stdout=logfile, stderr=logfile, env=testenv,
-                               preexec_fn=os.setsid)
-        cmd.wait()
-        if cmd.returncode != 0:
-            raise ValueError('Generating client certificate failed')
+    cmd = subprocess.Popen(["openssl", "x509", "-extfile", opensslcnf,
+                            "-extensions", "exts_client", "-set_serial", "3",
+                            "-days", "100", "-req", "-CA", pkinit_ca,
+                            "-CAkey", pkinit_key, "-out", pkinit_user_cert,
+                            "-in", pkinit_user_req],
+                           stdout=logfile, stderr=logfile, env=testenv,
+                           preexec_fn=os.setsid)
+    cmd.wait()
+    if cmd.returncode != 0:
+        raise ValueError('Generating client certificate failed')
 
 
 def setup_kdc(testdir, wrapenv):
-
     # setup kerberos environment
     testlog = os.path.join(testdir, 'kerb.log')
     krb5conf = os.path.join(testdir, 'krb5.conf')
@@ -317,22 +315,20 @@ def setup_kdc(testdir, wrapenv):
               'KRB5_TRACE': os.path.join(testdir, 'krbtrace.log')}
     kdcenv.update(wrapenv)
 
-    with (open(testlog, 'a')) as logfile:
-        ksetup = subprocess.Popen(["kdb5_util", "create", "-W", "-s",
-                                   "-r", TESTREALM, "-P", KDC_PASSWORD],
-                                  stdout=logfile, stderr=logfile,
-                                  env=kdcenv, preexec_fn=os.setsid)
+    logfile = open(testlog, 'a')
+    ksetup = subprocess.Popen(["kdb5_util", "create", "-W", "-s",
+                               "-r", TESTREALM, "-P", KDC_PASSWORD],
+                              stdout=logfile, stderr=logfile,
+                              env=kdcenv, preexec_fn=os.setsid)
     ksetup.wait()
     if ksetup.returncode != 0:
         raise ValueError('KDC Setup failed')
 
-    setup_test_certs(testdir, kdcenv, testlog)
+    setup_test_certs(testdir, kdcenv, logfile)
 
-    with (open(testlog, 'a')) as logfile:
-        kdcproc = subprocess.Popen(['krb5kdc', '-n'],
-                                   stdout=logfile, stderr=logfile,
-                                   env=kdcenv, preexec_fn=os.setsid)
-
+    kdcproc = subprocess.Popen(['krb5kdc', '-n'],
+                               stdout=logfile, stderr=logfile,
+                               env=kdcenv, preexec_fn=os.setsid)
     return kdcproc, kdcenv
 
 
@@ -357,36 +353,30 @@ KEY_TYPE = "aes256-cts-hmac-sha1-96:normal"
 def setup_keys(tesdir, env):
 
     testlog = os.path.join(testdir, 'kerb.log')
+    logfile = open(testlog, 'a')
 
     svc_name = "HTTP/%s" % WRAP_HOSTNAME
     svc_keytab = os.path.join(testdir, SVC_KTNAME)
     cmd = "addprinc -randkey -e %s %s" % (KEY_TYPE, svc_name)
-    with (open(testlog, 'a')) as logfile:
-        kadmin_local(cmd, env, logfile)
+    kadmin_local(cmd, env, logfile)
     cmd = "ktadd -k %s -e %s %s" % (svc_keytab, KEY_TYPE, svc_name)
-    with (open(testlog, 'a')) as logfile:
-        kadmin_local(cmd, env, logfile)
+    kadmin_local(cmd, env, logfile)
 
     cmd = "addprinc -pw %s -e %s %s" % (USR_PWD, KEY_TYPE, USR_NAME)
-    with (open(testlog, 'a')) as logfile:
-        kadmin_local(cmd, env, logfile)
+    kadmin_local(cmd, env, logfile)
 
     cmd = "addprinc -pw %s -e %s %s" % (USR_PWD_2, KEY_TYPE, USR_NAME_2)
-    with (open(testlog, 'a')) as logfile:
-        kadmin_local(cmd, env, logfile)
+    kadmin_local(cmd, env, logfile)
 
     # alias for multinamed hosts testing
     alias_name = "HTTP/%s" % WRAP_ALIASNAME
     cmd = "addprinc -randkey -e %s %s" % (KEY_TYPE, alias_name)
-    with (open(testlog, 'a')) as logfile:
-        kadmin_local(cmd, env, logfile)
+    kadmin_local(cmd, env, logfile)
     cmd = "ktadd -k %s -e %s %s" % (svc_keytab, KEY_TYPE, alias_name)
-    with (open(testlog, 'a')) as logfile:
-        kadmin_local(cmd, env, logfile)
+    kadmin_local(cmd, env, logfile)
 
     cmd = "addprinc -nokey -e %s %s" % (KEY_TYPE, USR_NAME_3)
-    with (open(testlog, 'a')) as logfile:
-        kadmin_local(cmd, env, logfile)
+    kadmin_local(cmd, env, logfile)
 
     keys_env = { "KRB5_KTNAME": svc_keytab }
     keys_env.update(env)
@@ -454,6 +444,7 @@ def kinit_user(testdir, kdcenv):
         kinit.wait()
         if kinit.returncode != 0:
             raise ValueError('kinit failed')
+
     return testenv
 
 
@@ -477,223 +468,199 @@ def kinit_certuser(testdir, kdcenv):
     return testenv
 
 
-def test_spnego_auth(testdir, testenv, testlog):
+def test_spnego_auth(testdir, testenv, logfile):
 
     spnegodir = os.path.join(testdir, 'httpd', 'html', 'spnego')
     os.mkdir(spnegodir)
     shutil.copy('tests/index.html', spnegodir)
     error_count = 0
 
-    with (open(testlog, 'a')) as logfile:
-        spnego = subprocess.Popen(["tests/t_spnego.py"],
-                                  stdout=logfile, stderr=logfile,
-                                  env=testenv, preexec_fn=os.setsid)
-        spnego.wait()
-        if spnego.returncode != 0:
-            sys.stderr.write('SPNEGO: FAILED\n')
-            error_count += 1
-        else:
-            sys.stderr.write('SPNEGO: SUCCESS\n')
+    spnego = subprocess.Popen(["tests/t_spnego.py"],
+                              stdout=logfile, stderr=logfile,
+                              env=testenv, preexec_fn=os.setsid)
+    spnego.wait()
+    if spnego.returncode != 0:
+        sys.stderr.write('SPNEGO: FAILED\n')
+        error_count += 1
+    else:
+        sys.stderr.write('SPNEGO: SUCCESS\n')
 
-    with (open(testlog, 'a')) as logfile:
-        spnego = subprocess.Popen(["tests/t_spnego_proxy.py"],
-                                  stdout=logfile, stderr=logfile,
-                                  env=testenv, preexec_fn=os.setsid)
-        spnego.wait()
-        if spnego.returncode != 0:
-            sys.stderr.write('SPNEGO Proxy Auth: FAILED\n')
-            error_count += 1
-        else:
-            sys.stderr.write('SPNEGO Proxy Auth: SUCCESS\n')
+    spnego = subprocess.Popen(["tests/t_spnego_proxy.py"],
+                              stdout=logfile, stderr=logfile,
+                              env=testenv, preexec_fn=os.setsid)
+    spnego.wait()
+    if spnego.returncode != 0:
+        sys.stderr.write('SPNEGO Proxy Auth: FAILED\n')
+        error_count += 1
+    else:
+        sys.stderr.write('SPNEGO Proxy Auth: SUCCESS\n')
 
-    with (open(testlog, 'a')) as logfile:
-        spnego = subprocess.Popen(["tests/t_spnego_no_auth.py"],
-                                  stdout=logfile, stderr=logfile,
-                                  env=testenv, preexec_fn=os.setsid)
-        spnego.wait()
-        if spnego.returncode != 0:
-            sys.stderr.write('SPNEGO No Auth: FAILED\n')
-            error_count += 1
-        else:
-            sys.stderr.write('SPNEGO No Auth: SUCCESS\n')
+    spnego = subprocess.Popen(["tests/t_spnego_no_auth.py"],
+                              stdout=logfile, stderr=logfile,
+                              env=testenv, preexec_fn=os.setsid)
+    spnego.wait()
+    if spnego.returncode != 0:
+        sys.stderr.write('SPNEGO No Auth: FAILED\n')
+        error_count += 1
+    else:
+        sys.stderr.write('SPNEGO No Auth: SUCCESS\n')
+
     return error_count
 
-def test_required_name_attr(testdir, testenv, testlog):
+def test_required_name_attr(testdir, testenv, logfile):
     for i in range(1, 5):
         required_name_attr_dir = os.path.join(testdir, 'httpd', 'html',
                                               'required_name_attr'+str(i))
         os.mkdir(required_name_attr_dir)
         shutil.copy('tests/index.html', required_name_attr_dir)
 
-    with (open(testlog, 'a')) as logfile:
-        tattr = subprocess.Popen(["tests/t_required_name_attr.py"],
-                                 stdout=logfile, stderr=logfile, env=testenv,
-                                 preexec_fn=os.setsid)
-        tattr.wait()
-        if tattr.returncode != 0:
-            sys.stderr.write('Required Name Attr: FAILED\n')
-            return 1
-        else:
-            sys.stderr.write('Required Name Attr: SUCCESS\n')
-            return 0
+    tattr = subprocess.Popen(["tests/t_required_name_attr.py"],
+                             stdout=logfile, stderr=logfile, env=testenv,
+                             preexec_fn=os.setsid)
+    tattr.wait()
+    if tattr.returncode != 0:
+        sys.stderr.write('Required Name Attr: FAILED\n')
+        return 1
+    sys.stderr.write('Required Name Attr: SUCCESS\n')
+    return 0
 
-def test_spnego_rewrite(testdir, testenv, testlog):
-
+def test_spnego_rewrite(testdir, testenv, logfile):
     spnego_rewrite_dir = os.path.join(testdir, 'httpd', 'html',
                                           'spnego_rewrite')
     os.mkdir(spnego_rewrite_dir)
     shutil.copy('tests/index.html', spnego_rewrite_dir)
 
-    with (open(testlog, 'a')) as logfile:
-        spnego = subprocess.Popen(["tests/t_spnego_rewrite.py"],
-                                  stdout=logfile, stderr=logfile,
-                                  env=testenv, preexec_fn=os.setsid)
-        spnego.wait()
-        if spnego.returncode != 0:
-            sys.stderr.write('SPNEGO Rewrite: FAILED\n')
-            return 1
-        else:
-            sys.stderr.write('SPNEGO Rewrite: SUCCESS\n')
-            return 0
+    spnego = subprocess.Popen(["tests/t_spnego_rewrite.py"],
+                              stdout=logfile, stderr=logfile,
+                              env=testenv, preexec_fn=os.setsid)
+    spnego.wait()
+    if spnego.returncode != 0:
+        sys.stderr.write('SPNEGO Rewrite: FAILED\n')
+        return 1
+    sys.stderr.write('SPNEGO Rewrite: SUCCESS\n')
+    return 0
 
-def test_spnego_negotiate_once(testdir, testenv, testlog):
-
+def test_spnego_negotiate_once(testdir, testenv, logfile):
     spnego_negotiate_once_dir = os.path.join(testdir, 'httpd', 'html',
-                                          'spnego_negotiate_once')
+                                                 'spnego_negotiate_once')
     os.mkdir(spnego_negotiate_once_dir)
     shutil.copy('tests/index.html', spnego_negotiate_once_dir)
 
-    with (open(testlog, 'a')) as logfile:
-        spnego = subprocess.Popen(["tests/t_spnego_negotiate_once.py"],
-                                  stdout=logfile, stderr=logfile,
-                                  env=testenv, preexec_fn=os.setsid)
-        spnego.wait()
-        if spnego.returncode != 0:
-            sys.stderr.write('SPNEGO Negotiate Once: FAILED\n')
-            return 1
-        else:
-            sys.stderr.write('SPNEGO Negotiate Once: SUCCESS\n')
-            return 0
+    spnego = subprocess.Popen(["tests/t_spnego_negotiate_once.py"],
+                              stdout=logfile, stderr=logfile,
+                              env=testenv, preexec_fn=os.setsid)
+    spnego.wait()
+    if spnego.returncode != 0:
+        sys.stderr.write('SPNEGO Negotiate Once: FAILED\n')
+        return 1
+    sys.stderr.write('SPNEGO Negotiate Once: SUCCESS\n')
+    return 0
 
-def test_basic_auth_krb5(testdir, testenv, testlog):
-
+def test_basic_auth_krb5(testdir, testenv, logfile):
     basicdir = os.path.join(testdir, 'httpd', 'html', 'basic_auth_krb5')
     os.mkdir(basicdir)
     shutil.copy('tests/index.html', basicdir)
     error_count = 0
 
-    with (open(testlog, 'a')) as logfile:
-        basick5 = subprocess.Popen(["tests/t_basic_k5.py"],
-                                   stdout=logfile, stderr=logfile,
-                                   env=testenv, preexec_fn=os.setsid)
-        basick5.wait()
-        if basick5.returncode != 0:
-            sys.stderr.write('BASIC-AUTH: FAILED\n')
-            error_count += 1
-        else:
-            sys.stderr.write('BASIC-AUTH: SUCCESS\n')
+    basick5 = subprocess.Popen(["tests/t_basic_k5.py"],
+                               stdout=logfile, stderr=logfile,
+                               env=testenv, preexec_fn=os.setsid)
+    basick5.wait()
+    if basick5.returncode != 0:
+        sys.stderr.write('BASIC-AUTH: FAILED\n')
+        error_count += 1
+    else:
+        sys.stderr.write('BASIC-AUTH: SUCCESS\n')
 
-    with (open(testlog, 'a')) as logfile:
-        basick5 = subprocess.Popen(["tests/t_basic_k5_two_users.py"],
-                                   stdout=logfile, stderr=logfile,
-                                   env=testenv, preexec_fn=os.setsid)
-        basick5.wait()
-        if basick5.returncode != 0:
-            sys.stderr.write('BASIC-AUTH Two Users: FAILED\n')
-            error_count += 1
-        else:
-            sys.stderr.write('BASIC-AUTH Two Users: SUCCESS\n')
+    basick5 = subprocess.Popen(["tests/t_basic_k5_two_users.py"],
+                               stdout=logfile, stderr=logfile,
+                               env=testenv, preexec_fn=os.setsid)
+    basick5.wait()
+    if basick5.returncode != 0:
+        sys.stderr.write('BASIC-AUTH Two Users: FAILED\n')
+        error_count += 1
+    else:
+        sys.stderr.write('BASIC-AUTH Two Users: SUCCESS\n')
 
-    with (open(testlog, 'a')) as logfile:
-        basick5 = subprocess.Popen(["tests/t_basic_k5_fail_second.py"],
-                                   stdout=logfile, stderr=logfile,
-                                   env=testenv, preexec_fn=os.setsid)
-        basick5.wait()
-        if basick5.returncode != 0:
-            sys.stderr.write('BASIC Fail Second User: FAILED\n')
-            error_count += 1
-        else:
-            sys.stderr.write('BASIC Fail Second User: SUCCESS\n')
+    basick5 = subprocess.Popen(["tests/t_basic_k5_fail_second.py"],
+                               stdout=logfile, stderr=logfile,
+                               env=testenv, preexec_fn=os.setsid)
+    basick5.wait()
+    if basick5.returncode != 0:
+        sys.stderr.write('BASIC Fail Second User: FAILED\n')
+        error_count += 1
+    else:
+        sys.stderr.write('BASIC Fail Second User: SUCCESS\n')
 
-    with (open(testlog, 'a')) as logfile:
-        basick5 = subprocess.Popen(["tests/t_basic_proxy.py"],
-                                   stdout=logfile, stderr=logfile,
-                                   env=testenv, preexec_fn=os.setsid)
-        basick5.wait()
-        if basick5.returncode != 0:
-            sys.stderr.write('BASIC Proxy Auth: FAILED\n')
-            error_count += 1
-        else:
-            sys.stderr.write('BASIC Proxy Auth: SUCCESS\n')
+    basick5 = subprocess.Popen(["tests/t_basic_proxy.py"],
+                               stdout=logfile, stderr=logfile,
+                               env=testenv, preexec_fn=os.setsid)
+    basick5.wait()
+    if basick5.returncode != 0:
+        sys.stderr.write('BASIC Proxy Auth: FAILED\n')
+        error_count += 1
+    else:
+        sys.stderr.write('BASIC Proxy Auth: SUCCESS\n')
 
     return error_count
 
-def test_bad_acceptor_name(testdir, testenv, testlog):
-
+def test_bad_acceptor_name(testdir, testenv, logfile):
     bandir = os.path.join(testdir, 'httpd', 'html', 'bad_acceptor_name')
     os.mkdir(bandir)
     shutil.copy('tests/index.html', bandir)
 
-    with (open(testlog, 'a')) as logfile:
-        ban = subprocess.Popen(["tests/t_bad_acceptor_name.py"],
-                               stdout=logfile, stderr=logfile,
-                               env=testenv, preexec_fn=os.setsid)
-        ban.wait()
-        if ban.returncode != 0:
-            sys.stderr.write('BAD ACCEPTOR: SUCCESS\n')
-            return 0
-        else:
-            sys.stderr.write('BAD ACCEPTOR: FAILED\n')
-            return 1
+    ban = subprocess.Popen(["tests/t_bad_acceptor_name.py"],
+                           stdout=logfile, stderr=logfile,
+                           env=testenv, preexec_fn=os.setsid)
+    ban.wait()
+    if ban.returncode != 0:
+        sys.stderr.write('BAD ACCEPTOR: SUCCESS\n')
+        return 0
+    sys.stderr.write('BAD ACCEPTOR: FAILED\n')
+    return 1
 
-def test_no_negotiate(testdir, testenv, testlog):
-
+def test_no_negotiate(testdir, testenv, logfile):
     nonego_dir = os.path.join(testdir, 'httpd', 'html', 'nonego')
     os.mkdir(nonego_dir)
     shutil.copy('tests/index.html', nonego_dir)
 
-    with (open(testlog, 'a')) as logfile:
-        spnego = subprocess.Popen(["tests/t_nonego.py"],
-                                  stdout=logfile, stderr=logfile,
-                                  env=testenv, preexec_fn=os.setsid)
-        spnego.wait()
-        if spnego.returncode != 0:
-            sys.stderr.write('NO Negotiate: FAILED\n')
-            return 1
-        else:
-            sys.stderr.write('NO Negotiate: SUCCESS\n')
-            return 0
+    spnego = subprocess.Popen(["tests/t_nonego.py"],
+                              stdout=logfile, stderr=logfile,
+                              env=testenv, preexec_fn=os.setsid)
+    spnego.wait()
+    if spnego.returncode != 0:
+        sys.stderr.write('NO Negotiate: FAILED\n')
+        return 1
+    sys.stderr.write('NO Negotiate: SUCCESS\n')
+    return 0
 
-def test_hostname_acceptor(testdir, testenv, testlog):
-
+def test_hostname_acceptor(testdir, testenv, logfile):
     hdir = os.path.join(testdir, 'httpd', 'html', 'hostname_acceptor')
     os.mkdir(hdir)
     shutil.copy('tests/index.html', hdir)
 
-    with (open(testlog, 'a')) as logfile:
-        failed = False
-        for (name, fail) in [(WRAP_HOSTNAME, False),
-                             (WRAP_ALIASNAME,False),
-                             (WRAP_FAILNAME, True)]:
-            res = subprocess.Popen(["tests/t_hostname_acceptor.py", name],
-                                   stdout=logfile, stderr=logfile,
-                                   env=testenv, preexec_fn=os.setsid)
-            res.wait()
-            if fail:
-                if res.returncode == 0:
-                    failed = True
-            else:
-                if res.returncode != 0:
-                    failed = True
-            if failed:
-                break
-
-        if failed:
-            sys.stderr.write('HOSTNAME ACCEPTOR: FAILED\n')
-            return 1
+    failed = False
+    for (name, fail) in [(WRAP_HOSTNAME, False),
+                         (WRAP_ALIASNAME,False),
+                         (WRAP_FAILNAME, True)]:
+        res = subprocess.Popen(["tests/t_hostname_acceptor.py", name],
+                               stdout=logfile, stderr=logfile,
+                               env=testenv, preexec_fn=os.setsid)
+        res.wait()
+        if fail:
+            if res.returncode == 0:
+                failed = True
         else:
-            sys.stderr.write('HOSTNAME ACCEPTOR: SUCCESS\n')
-            return 0
+            if res.returncode != 0:
+                failed = True
+        if failed:
+            break
+
+    if failed:
+        sys.stderr.write('HOSTNAME ACCEPTOR: FAILED\n')
+        return 1
+    sys.stderr.write('HOSTNAME ACCEPTOR: SUCCESS\n')
+    return 0
 
 if __name__ == '__main__':
 
@@ -707,7 +674,7 @@ if __name__ == '__main__':
 
     processes = dict()
 
-    testlog = os.path.join(testdir, 'tests.log')
+    logfile = open(os.path.join(testdir, 'tests.log'), 'w')
     errs = 0
     try:
         wrapenv = setup_wrappers(testdir)
@@ -727,21 +694,21 @@ if __name__ == '__main__':
 
         testenv['DELEGCCACHE'] = os.path.join(testdir, 'httpd',
                                               USR_NAME + '@' + TESTREALM)
-        errs += test_spnego_auth(testdir, testenv, testlog)
+        errs += test_spnego_auth(testdir, testenv, logfile)
 
         testenv['MAG_GSS_NAME'] = USR_NAME + '@' + TESTREALM
-        errs += test_spnego_rewrite(testdir, testenv, testlog)
+        errs += test_spnego_rewrite(testdir, testenv, logfile)
 
-        errs += test_spnego_negotiate_once(testdir, testenv, testlog)
+        errs += test_spnego_negotiate_once(testdir, testenv, logfile)
 
-        errs += test_hostname_acceptor(testdir, testenv, testlog)
+        errs += test_hostname_acceptor(testdir, testenv, logfile)
 
-        errs += test_bad_acceptor_name(testdir, testenv, testlog)
+        errs += test_bad_acceptor_name(testdir, testenv, logfile)
 
         if os.path.exists("/usr/lib64/krb5/plugins/preauth/pkinit.so") or \
            os.path.exists("/usr/lib/x86_64-linux-gnu/krb5/plugins/preauth/pkinit.so"):
             testenv = kinit_certuser(testdir, testenv)
-            errs += test_required_name_attr(testdir, testenv, testlog)
+            errs += test_required_name_attr(testdir, testenv, logfile)
         else:
             sys.stderr.write("krb5 PKINIT module not found, skipping name "
                              "attribute tests\n")
@@ -751,13 +718,12 @@ if __name__ == '__main__':
                    'MAG_USER_NAME_2': USR_NAME_2,
                    'MAG_USER_PASSWORD_2': USR_PWD_2}
         testenv.update(kdcenv)
-        errs += test_basic_auth_krb5(testdir, testenv, testlog)
+        errs += test_basic_auth_krb5(testdir, testenv, logfile)
 
-        errs += test_no_negotiate(testdir, testenv, testlog)
+        errs += test_no_negotiate(testdir, testenv, logfile)
 
     finally:
-        with (open(testlog, 'a')) as logfile:
-            for name in processes:
-                logfile.write("Killing %s\n" % name)
-                os.killpg(processes[name].pid, signal.SIGTERM)
+        for name in processes:
+            logfile.write("Killing %s\n" % name)
+            os.killpg(processes[name].pid, signal.SIGTERM)
         exit(errs)
