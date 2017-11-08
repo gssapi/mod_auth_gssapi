@@ -17,7 +17,7 @@ if __name__ == '__main__':
     if r.status_code != 401:
         raise ValueError('Spnego Negotiate Once failed - 401 expected')
     if not (r.headers.get("WWW-Authenticate") and
-        r.headers.get("WWW-Authenticate").startswith("Negotiate")):
+            r.headers.get("WWW-Authenticate").startswith("Negotiate")):
         raise ValueError('Spnego Negotiate Once failed - WWW-Authenticate '
                          'Negotiate header missing')
 

@@ -25,4 +25,4 @@ if __name__ == '__main__':
         raise ValueError('Basic Auth failed')
 
     if r.text == r2.text:
-         raise ValueError('Basic Auth fatal error')
+        raise ValueError('Basic Auth fatal error')

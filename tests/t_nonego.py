@@ -23,7 +23,7 @@ if __name__ == '__main__':
     r = requests.get(url, headers={'User-Agent': 'NONEGO'})
     if r.status_code != 401:
         raise ValueError('NO Negotiate failed - 401 expected')
-    if (r.headers.get("WWW-Authenticate") and
-        r.headers.get("WWW-Authenticate").startswith("Negotiate")):
+    if r.headers.get("WWW-Authenticate") and \
+       r.headers.get("WWW-Authenticate").startswith("Negotiate"):
         raise ValueError('NO Negotiate failed - WWW-Authenticate '
                          'Negotiate header is present, should be absent')
