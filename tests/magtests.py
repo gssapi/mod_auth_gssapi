@@ -6,7 +6,6 @@ import os
 import random
 import shutil
 import signal
-from string import Template
 import subprocess
 import sys
 
@@ -71,53 +70,53 @@ KDC_STASH = 'stash.file'
 KDC_PASSWORD = 'modauthgssapi'
 KRB5_CONF_TEMPLATE = '''
 [libdefaults]
-  default_realm = ${TESTREALM}
+  default_realm = {TESTREALM}
   dns_lookup_realm = false
   dns_lookup_kdc = false
   rdns = false
   ticket_lifetime = 24h
   forwardable = yes
-  default_ccache_name = FILE://${TESTDIR}/ccaches/krb5_ccache_XXXXXX
+  default_ccache_name = FILE://{TESTDIR}/ccaches/krb5_ccache_XXXXXX
 
 [realms]
-  ${TESTREALM} = {
-    kdc =${WRAP_HOSTNAME}
-    pkinit_anchors = FILE:${TESTDIR}/${PKINIT_CA}
-  }
+  {TESTREALM} = {{
+    kdc = {WRAP_HOSTNAME}
+    pkinit_anchors = FILE:{TESTDIR}/{PKINIT_CA}
+  }}
 
 [domain_realm]
-  .mag.dev = ${TESTREALM}
-  mag.dev = ${TESTREALM}
+  .mag.dev = {TESTREALM}
+  mag.dev = {TESTREALM}
 
 [dbmodules]
-  ${TESTREALM} = {
-    database_name = ${KDCDIR}/${KDC_DBNAME}
-  }
+  {TESTREALM} = {{
+    database_name = {KDCDIR}/{KDC_DBNAME}
+  }}
 '''
 KDC_CONF_TEMPLATE = '''
 [kdcdefaults]
  kdc_ports = 88
  kdc_tcp_ports = 88
  restrict_anonymous_to_tgt = true
- pkinit_identity = FILE:${TESTDIR}/${PKINIT_KDC_CERT},${TESTDIR}/${PKINIT_KEY}
- pkinit_anchors = FILE:${TESTDIR}/${PKINIT_CA}
+ pkinit_identity = FILE:{TESTDIR}/{PKINIT_KDC_CERT},{TESTDIR}/{PKINIT_KEY}
+ pkinit_anchors = FILE:{TESTDIR}/{PKINIT_CA}
  pkinit_indicator = na1
  pkinit_indicator = na2
  pkinit_indicator = na3
 
 [realms]
- ${TESTREALM} = {
+ {TESTREALM} = {{
   master_key_type = aes256-cts
   max_life = 7d
   max_renewable_life = 14d
-  acl_file = ${KDCDIR}/kadm5.acl
+  acl_file = {KDCDIR}/kadm5.acl
   dict_file = /usr/share/dict/words
   default_principal_flags = +preauth
-  admin_keytab = ${TESTREALM}/kadm5.keytab
-  key_stash_file = ${KDCDIR}/${KDC_STASH}
- }
+  admin_keytab = {TESTREALM}/kadm5.keytab
+  key_stash_file = {KDCDIR}/{KDC_STASH}
+ }}
 [logging]
-  kdc = FILE:${KDCLOG}
+  kdc = FILE:{KDCLOG}
 '''
 
 PKINIT_CA = 'cacert.pem'
@@ -130,22 +129,22 @@ PKINIT_KDC_CERT = 'kdccert.pem'
 OPENSSLCNF_TEMPLATE = '''
 [req]
 prompt = no
-distinguished_name = $$ENV::O_SUBJECT
+distinguished_name = $ENV::O_SUBJECT
 
 [ca]
 CN = CA
 C = US
 OU = Insecure test CA do not use
-O = ${TESTREALM}
+O = {TESTREALM}
 
 [kdc]
 C = US
-O = ${TESTREALM}
+O = {TESTREALM}
 CN = KDC
 
 [user]
 C = US
-O = ${TESTREALM}
+O = {TESTREALM}
 CN = maguser3
 
 [exts_ca]
@@ -156,14 +155,14 @@ basicConstraints = critical,CA:TRUE
 
 [components_kdc]
 0.component=GeneralString:krbtgt
-1.component=GeneralString:${TESTREALM}
+1.component=GeneralString:{TESTREALM}
 
 [princ_kdc]
 nametype=EXPLICIT:0,INTEGER:1
 components=EXPLICIT:1,SEQUENCE:components_kdc
 
 [krb5princ_kdc]
-realm=EXPLICIT:0,GeneralString:${TESTREALM}
+realm=EXPLICIT:0,GeneralString:{TESTREALM}
 princ=EXPLICIT:1,SEQUENCE:princ_kdc
 
 [exts_kdc]
@@ -182,7 +181,7 @@ nametype=EXPLICIT:0,INTEGER:1
 components=EXPLICIT:1,SEQUENCE:components_client
 
 [krb5princ_client]
-realm=EXPLICIT:0,GeneralString:${TESTREALM}
+realm=EXPLICIT:0,GeneralString:{TESTREALM}
 princ=EXPLICIT:1,SEQUENCE:princ_client
 
 [exts_client]
@@ -204,8 +203,7 @@ def setup_test_certs(testdir, testenv, logfile):
     pkinit_kdc_cert = os.path.join(testdir, PKINIT_KDC_CERT)
     pkinit_user_cert = os.path.join(testdir, PKINIT_USER_CERT)
 
-    cnf = Template(OPENSSLCNF_TEMPLATE)
-    text = cnf.substitute({'TESTREALM': TESTREALM})
+    text = OPENSSLCNF_TEMPLATE.format(TESTREALM=TESTREALM)
     with open(opensslcnf, 'w+') as f:
         f.write(text)
 
@@ -282,27 +280,25 @@ def setup_kdc(testdir, wrapenv):
         shutil.rmtree(kdcdir)
     os.makedirs(kdcdir)
 
-    t = Template(KRB5_CONF_TEMPLATE)
-    text = t.substitute({'TESTREALM': TESTREALM,
-                         'TESTDIR': testdir,
-                         'KDCDIR': kdcdir,
-                         'KDC_DBNAME': KDC_DBNAME,
-                         'WRAP_HOSTNAME': WRAP_HOSTNAME,
-                         'PKINIT_CA': PKINIT_CA,
-                         'PKINIT_USER_CERT': PKINIT_USER_CERT,
-                         'PKINIT_KEY': PKINIT_KEY})
+    text = KRB5_CONF_TEMPLATE.format(TESTREALM=TESTREALM,
+                                     TESTDIR=testdir,
+                                     KDCDIR=kdcdir,
+                                     KDC_DBNAME=KDC_DBNAME,
+                                     WRAP_HOSTNAME=WRAP_HOSTNAME,
+                                     PKINIT_CA=PKINIT_CA,
+                                     PKINIT_USER_CERT=PKINIT_USER_CERT,
+                                     PKINIT_KEY=PKINIT_KEY)
     with open(krb5conf, 'w+') as f:
         f.write(text)
 
-    t = Template(KDC_CONF_TEMPLATE)
-    text = t.substitute({'TESTREALM': TESTREALM,
-                         'TESTDIR': testdir,
-                         'KDCDIR': kdcdir,
-                         'KDCLOG': testlog,
-                         'KDC_STASH': KDC_STASH,
-                         'PKINIT_CA': PKINIT_CA,
-                         'PKINIT_KDC_CERT': PKINIT_KDC_CERT,
-                         'PKINIT_KEY': PKINIT_KEY})
+    text = KDC_CONF_TEMPLATE.format(TESTREALM=TESTREALM,
+                                    TESTDIR=testdir,
+                                    KDCDIR=kdcdir,
+                                    KDCLOG=testlog,
+                                    KDC_STASH=KDC_STASH,
+                                    PKINIT_CA=PKINIT_CA,
+                                    PKINIT_KDC_CERT=PKINIT_KDC_CERT,
+                                    PKINIT_KEY=PKINIT_KEY)
     with open(kdcconf, 'w+') as f:
         f.write(text)
 
@@ -401,12 +397,12 @@ def setup_http(testdir, so_dir, wrapenv):
     shutil.copy('%s/mod_auth_gssapi.so' % so_dir, httpdir)
 
     with open('tests/httpd.conf') as f:
-        t = Template(f.read())
-        text = t.substitute({'HTTPROOT': httpdir,
-                             'HTTPNAME': WRAP_HOSTNAME,
-                             'HTTPADDR': WRAP_IPADDR,
-                             'PROXYPORT': WRAP_PROXY_PORT,
-                             'HTTPPORT': WRAP_HTTP_PORT})
+        text = f.read().format(HTTPROOT=httpdir,
+                               HTTPNAME=WRAP_HOSTNAME,
+                               HTTPADDR=WRAP_IPADDR,
+                               PROXYPORT=WRAP_PROXY_PORT,
+                               HTTPPORT=WRAP_HTTP_PORT,
+                               HOSTNAME=WRAP_HOSTNAME)
     config = os.path.join(httpdir, 'httpd.conf')
     with open(config, 'w+') as f:
         f.write(text)
