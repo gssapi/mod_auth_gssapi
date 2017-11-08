@@ -8,16 +8,18 @@ import requests
 if __name__ == '__main__':
     s = requests.Session()
 
-    url = 'http://%s:%s@%s/basic_auth_krb5/' % (os.environ['MAG_USER_NAME'],
-                                                os.environ['MAG_USER_PASSWORD'],
-                                                os.environ['NSS_WRAPPER_HOSTNAME'])
+    url = 'http://%s:%s@%s/basic_auth_krb5/' % \
+          (os.environ['MAG_USER_NAME'],
+           os.environ['MAG_USER_PASSWORD'],
+           os.environ['NSS_WRAPPER_HOSTNAME'])
     r = s.get(url)
     if r.status_code != 200:
         raise ValueError('Basic Auth Failed')
 
-    url = 'http://%s:%s@%s/basic_auth_krb5/' % (os.environ['MAG_USER_NAME_2'],
-                                                os.environ['MAG_USER_PASSWORD_2'],
-                                                os.environ['NSS_WRAPPER_HOSTNAME'])
+    url = 'http://%s:%s@%s/basic_auth_krb5/' % \
+          (os.environ['MAG_USER_NAME_2'],
+           os.environ['MAG_USER_PASSWORD_2'],
+           os.environ['NSS_WRAPPER_HOSTNAME'])
     r2 = s.get(url)
     if r2.status_code != 200:
         raise ValueError('Basic Auth failed')
