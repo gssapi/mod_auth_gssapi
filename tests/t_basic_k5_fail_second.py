@@ -23,7 +23,7 @@ if __name__ == '__main__':
     r = s.get(url)
     if r.status_code == 200:
         raise ValueError('Basic Auth: Got Success while expecting Error')
-    if not 'GSS ERROR' in r.text:
+    if 'GSS ERROR' not in r.text:
         raise ValueError('Basic Auth: Expected error variable is missing')
 
     url = 'http://%s:%s@%s/basic_auth_krb5/' % \

@@ -19,5 +19,5 @@ if __name__ == '__main__':
         raise ValueError('gssapi_session not set')
 
     data = os.stat(os.environ['DELEGCCACHE'])
-    if data[ST_MODE] != 0100666:
+    if data[ST_MODE] != 0o100666:
         raise ValueError('Incorrect perm on ccache: %o' % data[ST_MODE])

@@ -11,9 +11,10 @@ import subprocess
 import sys
 
 # check that we can import requests (for use in test scripts)
-import requests, requests_kerberos
-del(requests)
-del(requests_kerberos)
+import requests
+import requests_kerberos
+del requests
+del requests_kerberos
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -209,7 +210,7 @@ def setup_test_certs(testdir, testenv, logfile):
     with open(opensslcnf, 'w+') as f:
         f.write(text)
 
-    print pkinit_key
+    print(pkinit_key)
     cmd = subprocess.Popen(["openssl", "genrsa", "-out", pkinit_key,
                             "2048"], stdout=logfile,
                            stderr=logfile, env=testenv,
