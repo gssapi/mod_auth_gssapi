@@ -1,11 +1,9 @@
 #!/usr/bin/env python
 # Copyright (C) 2017 - mod_auth_gssapi contributors, see COPYING for license.
 
-import os
 import requests
 import sys
-from stat import ST_MODE
-from requests_kerberos import HTTPKerberosAuth, OPTIONAL
+from requests_kerberos import HTTPKerberosAuth, OPTIONAL # noqa
 
 
 if __name__ == '__main__':
