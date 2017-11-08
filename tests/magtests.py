@@ -16,7 +16,8 @@ del(requests)
 del(requests_kerberos)
 
 def parse_args():
-    parser = argparse.ArgumentParser(description='Mod Auth GSSAPI Tests Environment')
+    parser = argparse.ArgumentParser(
+        description='Mod Auth GSSAPI Tests Environment')
     parser.add_argument('--path', default='%s/scratchdir' % os.getcwd(),
                         help="Directory in which tests are run")
     parser.add_argument('--so-dir', default='%s/src/.libs' % os.getcwd(),
@@ -191,7 +192,7 @@ keyUsage = nonRepudiation,digitalSignature,keyEncipherment,keyAgreement
 basicConstraints = critical,CA:FALSE
 subjectAltName = otherName:1.3.6.1.5.2.2;SEQUENCE:krb5princ_client
 extendedKeyUsage = 1.3.6.1.5.2.3.4
-'''
+''' # noqa
 
 def setup_test_certs(testdir, testenv, logfile):
 
@@ -701,8 +702,9 @@ if __name__ == '__main__':
 
         errs += test_bad_acceptor_name(testdir, testenv, logfile)
 
-        if os.path.exists("/usr/lib64/krb5/plugins/preauth/pkinit.so") or \
-           os.path.exists("/usr/lib/x86_64-linux-gnu/krb5/plugins/preauth/pkinit.so"):
+        rpm_path = "/usr/lib64/krb5/plugins/preauth/pkinit.so"
+        deb_path = "/usr/lib/x86_64-linux-gnu/krb5/plugins/preauth/pkinit.so"
+        if os.path.exists(rpm_path) or os.path.exists(deb_path):
             testenv = kinit_certuser(testdir, testenv)
             errs += test_required_name_attr(testdir, testenv, logfile)
         else:
