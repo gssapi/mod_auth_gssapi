@@ -16,6 +16,7 @@ import requests_kerberos
 del requests
 del requests_kerberos
 
+
 def parse_args():
     parser = argparse.ArgumentParser(
         description='Mod Auth GSSAPI Tests Environment')
@@ -23,7 +24,6 @@ def parse_args():
                         help="Directory in which tests are run")
     parser.add_argument('--so-dir', default='%s/src/.libs' % os.getcwd(),
                         help="mod_auth_gssapi shared object dirpath")
-
     return vars(parser.parse_args())
 
 
@@ -34,8 +34,8 @@ WRAP_IPADDR = '127.0.0.9'
 WRAP_HTTP_PORT = '80'
 WRAP_PROXY_PORT = '8080'
 
-def setup_wrappers(base):
 
+def setup_wrappers(base):
     pkgcfg = subprocess.Popen(['pkg-config', '--exists', 'socket_wrapper'])
     pkgcfg.wait()
     if pkgcfg.returncode != 0:
@@ -62,7 +62,6 @@ def setup_wrappers(base):
             'WRAP_PROXY_PORT': WRAP_PROXY_PORT,
             'NSS_WRAPPER_HOSTNAME': WRAP_HOSTNAME,
             'NSS_WRAPPER_HOSTS': hosts_file}
-
     return wenv
 
 
@@ -195,8 +194,8 @@ subjectAltName = otherName:1.3.6.1.5.2.2;SEQUENCE:krb5princ_client
 extendedKeyUsage = 1.3.6.1.5.2.3.4
 ''' # noqa
 
-def setup_test_certs(testdir, testenv, logfile):
 
+def setup_test_certs(testdir, testenv, logfile):
     opensslcnf = os.path.join(testdir, 'openssl.cnf')
     pkinit_key = os.path.join(testdir, PKINIT_KEY)
     pkinit_ca = os.path.join(testdir, PKINIT_CA)
@@ -349,14 +348,14 @@ KEY_TYPE = "aes256-cts-hmac-sha1-96:normal"
 
 
 def setup_keys(tesdir, env):
-
     testlog = os.path.join(testdir, 'kerb.log')
     logfile = open(testlog, 'a')
 
     svc_name = "HTTP/%s" % WRAP_HOSTNAME
-    svc_keytab = os.path.join(testdir, SVC_KTNAME)
     cmd = "addprinc -randkey -e %s %s" % (KEY_TYPE, svc_name)
     kadmin_local(cmd, env, logfile)
+
+    svc_keytab = os.path.join(testdir, SVC_KTNAME)
     cmd = "ktadd -k %s -e %s %s" % (svc_keytab, KEY_TYPE, svc_name)
     kadmin_local(cmd, env, logfile)
 
@@ -376,9 +375,8 @@ def setup_keys(tesdir, env):
     cmd = "addprinc -nokey -e %s %s" % (KEY_TYPE, USR_NAME_3)
     kadmin_local(cmd, env, logfile)
 
-    keys_env = { "KRB5_KTNAME": svc_keytab }
+    keys_env = {"KRB5_KTNAME": svc_keytab, }
     keys_env.update(env)
-
     return keys_env
 
 
@@ -423,7 +421,6 @@ def setup_http(testdir, so_dir, wrapenv):
     httpd = "httpd" if distro == "Fedora" else "apache2"
     httpproc = subprocess.Popen([httpd, '-DFOREGROUND', '-f', config],
                                 env=httpenv, preexec_fn=os.setsid)
-
     return httpproc
 
 
@@ -467,7 +464,6 @@ def kinit_certuser(testdir, kdcenv):
 
 
 def test_spnego_auth(testdir, testenv, logfile):
-
     spnegodir = os.path.join(testdir, 'httpd', 'html', 'spnego')
     os.mkdir(spnegodir)
     shutil.copy('tests/index.html', spnegodir)
@@ -505,6 +501,7 @@ def test_spnego_auth(testdir, testenv, logfile):
 
     return error_count
 
+
 def test_required_name_attr(testdir, testenv, logfile):
     for i in range(1, 5):
         required_name_attr_dir = os.path.join(testdir, 'httpd', 'html',
@@ -522,6 +519,7 @@ def test_required_name_attr(testdir, testenv, logfile):
     sys.stderr.write('Required Name Attr: SUCCESS\n')
     return 0
 
+
 def test_spnego_rewrite(testdir, testenv, logfile):
     spnego_rewrite_dir = os.path.join(testdir, 'httpd', 'html',
                                       'spnego_rewrite')
@@ -538,6 +536,7 @@ def test_spnego_rewrite(testdir, testenv, logfile):
     sys.stderr.write('SPNEGO Rewrite: SUCCESS\n')
     return 0
 
+
 def test_spnego_negotiate_once(testdir, testenv, logfile):
     spnego_negotiate_once_dir = os.path.join(testdir, 'httpd', 'html',
                                              'spnego_negotiate_once')
@@ -553,6 +552,7 @@ def test_spnego_negotiate_once(testdir, testenv, logfile):
         return 1
     sys.stderr.write('SPNEGO Negotiate Once: SUCCESS\n')
     return 0
+
 
 def test_basic_auth_krb5(testdir, testenv, logfile):
     basicdir = os.path.join(testdir, 'httpd', 'html', 'basic_auth_krb5')
@@ -602,6 +602,7 @@ def test_basic_auth_krb5(testdir, testenv, logfile):
 
     return error_count
 
+
 def test_bad_acceptor_name(testdir, testenv, logfile):
     bandir = os.path.join(testdir, 'httpd', 'html', 'bad_acceptor_name')
     os.mkdir(bandir)
@@ -616,6 +617,7 @@ def test_bad_acceptor_name(testdir, testenv, logfile):
         return 0
     sys.stderr.write('BAD ACCEPTOR: FAILED\n')
     return 1
+
 
 def test_no_negotiate(testdir, testenv, logfile):
     nonego_dir = os.path.join(testdir, 'httpd', 'html', 'nonego')
@@ -632,6 +634,7 @@ def test_no_negotiate(testdir, testenv, logfile):
     sys.stderr.write('NO Negotiate: SUCCESS\n')
     return 0
 
+
 def test_hostname_acceptor(testdir, testenv, logfile):
     hdir = os.path.join(testdir, 'httpd', 'html', 'hostname_acceptor')
     os.mkdir(hdir)
@@ -639,7 +642,7 @@ def test_hostname_acceptor(testdir, testenv, logfile):
 
     failed = False
     for (name, fail) in [(WRAP_HOSTNAME, False),
-                         (WRAP_ALIASNAME,False),
+                         (WRAP_ALIASNAME, False),
                          (WRAP_FAILNAME, True)]:
         res = subprocess.Popen(["tests/t_hostname_acceptor.py", name],
                                stdout=logfile, stderr=logfile,
@@ -660,8 +663,8 @@ def test_hostname_acceptor(testdir, testenv, logfile):
     sys.stderr.write('HOSTNAME ACCEPTOR: SUCCESS\n')
     return 0
 
-if __name__ == '__main__':
 
+if __name__ == '__main__':
     args = parse_args()
 
     testdir = args['path']
@@ -671,7 +674,6 @@ if __name__ == '__main__':
     os.makedirs(testdir)
 
     processes = dict()
-
     logfile = open(os.path.join(testdir, 'tests.log'), 'w')
     errs = 0
     try:
@@ -720,7 +722,6 @@ if __name__ == '__main__':
         errs += test_basic_auth_krb5(testdir, testenv, logfile)
 
         errs += test_no_negotiate(testdir, testenv, logfile)
-
     finally:
         for name in processes:
             logfile.write("Killing %s\n" % name)
