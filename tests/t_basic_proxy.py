@@ -11,7 +11,7 @@ if __name__ == '__main__':
                                     os.environ['MAG_USER_PASSWORD'],
                                     os.environ['NSS_WRAPPER_HOSTNAME'],
                                     os.environ['WRAP_PROXY_PORT'])
-    proxies = { "http": proxy, }
+    proxies = {"http": proxy, }
     url = 'http://%s/basic_auth_krb5/' % os.environ['NSS_WRAPPER_HOSTNAME']
     r = requests.get(url, proxies=proxies,
                      auth=HTTPBasicAuth(os.environ['MAG_USER_NAME_2'],

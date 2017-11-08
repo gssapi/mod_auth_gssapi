@@ -34,4 +34,3 @@ if __name__ == '__main__':
     r = sess.get(url, auth=HTTPKerberosAuth())
     if r.status_code != 200:
         raise ValueError('Spnego Negotiate Once failed')
-

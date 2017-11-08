@@ -6,6 +6,8 @@ import requests
 import gssapi
 from base64 import b64encode
 
+
+
 def getAuthToken(target):
     spnego_mech = gssapi.raw.OID.from_int_seq('1.3.6.1.5.5.2')
 
@@ -25,7 +27,7 @@ if __name__ == '__main__':
     url = 'http://%s/spnego/' % target
 
     proxy = 'http://%s:%s' % (target, os.environ['WRAP_PROXY_PORT'])
-    proxies = { "http" : proxy, }
+    proxies = {"http": proxy, }
 
     s.headers.update({'Proxy-Authorization': getAuthToken(target)})
     s.headers.update({'Authorization': getAuthToken(target)})

@@ -23,6 +23,7 @@ except ImportError:
     print("Your GSSAPI does not provide cred store extension; exiting!")
     exit(1)
 
+
 # process file as a ccache and indicate whether it is expired
 def should_delete(fname, t):
     try:
@@ -44,6 +45,7 @@ def should_delete(fname, t):
         return False
 
     return creds.lifetime == 0
+
 
 if __name__ == "__main__":
     dirs = sys.argv[1:]

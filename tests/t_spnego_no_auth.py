@@ -18,4 +18,3 @@ if __name__ == '__main__':
             r.headers.get("WWW-Authenticate").startswith("Negotiate")):
         raise ValueError('Spnego failed - WWW-Authenticate Negotiate header '
                          'missing')
-
