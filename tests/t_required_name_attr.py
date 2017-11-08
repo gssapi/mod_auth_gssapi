@@ -3,7 +3,7 @@
 
 import os
 import requests
-from requests_kerberos import HTTPKerberosAuth, OPTIONAL
+from requests_kerberos import HTTPKerberosAuth, OPTIONAL # noqa
 
 
 if __name__ == '__main__':

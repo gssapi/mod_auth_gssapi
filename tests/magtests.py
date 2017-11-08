@@ -2,7 +2,6 @@
 # Copyright (C) 2015 - mod_auth_gssapi contributors, see COPYING for license.
 
 import argparse
-import glob
 import os
 import random
 import shutil
@@ -10,7 +9,6 @@ import signal
 from string import Template
 import subprocess
 import sys
-import time
 
 # check that we can import requests (for use in test scripts)
 import requests, requests_kerberos
@@ -279,8 +277,6 @@ def setup_kdc(testdir, wrapenv):
     krb5conf = os.path.join(testdir, 'krb5.conf')
     kdcconf = os.path.join(testdir, 'kdc.conf')
     kdcdir = os.path.join(testdir, 'kdc')
-    kdcstash = os.path.join(kdcdir, KDC_STASH)
-    kdcdb = os.path.join(kdcdir, KDC_DBNAME)
     if os.path.exists(kdcdir):
         shutil.rmtree(kdcdir)
     os.makedirs(kdcdir)

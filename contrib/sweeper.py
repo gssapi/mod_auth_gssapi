@@ -9,13 +9,14 @@
 # removing any ccaches that have expired from the filesystem, and serves as an
 # example of how this cleaning can be performed.
 
-import gssapi
 import os
-import re
 import stat
 import sys
 import time
 
+# try importing this first to provide a more useful error message
+import gssapi
+del gssapi
 try:
     from gssapi.raw import acquire_cred_from
 except ImportError:

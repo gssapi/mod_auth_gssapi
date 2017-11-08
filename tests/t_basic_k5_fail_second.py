@@ -3,8 +3,6 @@
 
 import os
 import requests
-import sys
-from requests.auth import HTTPBasicAuth
 
 
 if __name__ == '__main__':
