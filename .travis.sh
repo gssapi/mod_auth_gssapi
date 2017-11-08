@@ -12,7 +12,8 @@ if [ -f /etc/debian_version ]; then
                    apache2-bin {apache2,libkrb5,libssl,gss-ntlmssp}-dev \
                    python-{dev,requests,gssapi} lib{socket,nss}-wrapper \
                    flex bison krb5-{kdc,admin-server,pkinit} \
-                   python-requests-kerberos
+                   python-requests-kerberos flake8
+    flake8
 elif [ -f /etc/fedora-release ]; then
     # https://bugzilla.redhat.com/show_bug.cgi?id=1483553 means that this will
     # fail no matter what, but it will properly install the packages.
