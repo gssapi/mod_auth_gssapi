@@ -2,10 +2,10 @@
 # Copyright (C) 2015 - mod_auth_gssapi contributors, see COPYING for license.
 
 import os
-import requests
 from stat import ST_MODE
-from requests_kerberos import HTTPKerberosAuth, OPTIONAL # noqa
 
+import requests
+from requests_kerberos import HTTPKerberosAuth, OPTIONAL # noqa
 
 if __name__ == '__main__':
     sess = requests.Session()
