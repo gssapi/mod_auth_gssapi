@@ -523,7 +523,7 @@ def test_required_name_attr(testdir, testenv, logfile):
 
 def test_spnego_rewrite(testdir, testenv, logfile):
     spnego_rewrite_dir = os.path.join(testdir, 'httpd', 'html',
-                                          'spnego_rewrite')
+                                      'spnego_rewrite')
     os.mkdir(spnego_rewrite_dir)
     shutil.copy('tests/index.html', spnego_rewrite_dir)
 
@@ -539,7 +539,7 @@ def test_spnego_rewrite(testdir, testenv, logfile):
 
 def test_spnego_negotiate_once(testdir, testenv, logfile):
     spnego_negotiate_once_dir = os.path.join(testdir, 'httpd', 'html',
-                                                 'spnego_negotiate_once')
+                                             'spnego_negotiate_once')
     os.mkdir(spnego_negotiate_once_dir)
     shutil.copy('tests/index.html', spnego_negotiate_once_dir)
 

@@ -8,9 +8,9 @@ from requests.auth import HTTPBasicAuth
 
 if __name__ == '__main__':
     proxy = 'http://%s:%s@%s:%s' % (os.environ['MAG_USER_NAME'],
-                                      os.environ['MAG_USER_PASSWORD'],
-                                      os.environ['NSS_WRAPPER_HOSTNAME'],
-                                      os.environ['WRAP_PROXY_PORT'])
+                                    os.environ['MAG_USER_PASSWORD'],
+                                    os.environ['NSS_WRAPPER_HOSTNAME'],
+                                    os.environ['WRAP_PROXY_PORT'])
     proxies = { "http": proxy, }
     url = 'http://%s/basic_auth_krb5/' % os.environ['NSS_WRAPPER_HOSTNAME']
     r = requests.get(url, proxies=proxies,
