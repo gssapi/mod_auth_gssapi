@@ -1,8 +1,9 @@
 #!/usr/bin/env python
 # Copyright (C) 2017 - mod_auth_gssapi contributors, see COPYING for license.
 
-import requests
 import sys
+
+import requests
 from requests_kerberos import HTTPKerberosAuth, OPTIONAL # noqa
 
 

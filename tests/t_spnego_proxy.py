@@ -2,10 +2,10 @@
 # Copyright (C) 2015 - mod_auth_gssapi contributors, see COPYING for license.
 
 import os
-import requests
-import gssapi
 from base64 import b64encode
 
+import gssapi
+import requests
 
 
 def getAuthToken(target):
