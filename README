@@ -17,8 +17,8 @@ extension](http://k5wiki.kerberos.org/wiki/Projects/Credential_Store_extensions)
 is necessary to achieve full functionality. Reduced functionality is
 provided without these extensions.
 
-    krb5 (>=1.11)
-    Apache (>=2.4)
+    MIT krb5 (>=1.11)
+    Apache httpd (>=2.4.11)
 
 ### Tests
 
