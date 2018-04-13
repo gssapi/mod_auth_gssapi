@@ -340,9 +340,8 @@ void mag_get_name_attributes(request_rec *req, struct mag_config *cfg,
             /* Use the environment variable name matching the attribute name
              * from the map. */
             for (int j = 0; j < map_count; j++) {
-                if (strncmp(cfg->name_attributes->map[j].attr_name,
-                            attr.name.value,
-                            attr.name.length) == 0) {
+                if (mag_strbuf_equal(cfg->name_attributes->map[j].attr_name,
+                                     &attr.name)) {
                     attr.env_name = cfg->name_attributes->map[j].env_name;
                     break;
                 }
