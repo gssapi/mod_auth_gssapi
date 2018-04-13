@@ -64,3 +64,9 @@ int mag_get_group_gid(const char *name, gid_t *gid)
     free(buf);
     return ret;
 }
+
+bool mag_strbuf_equal(const char *str, gss_buffer_t buf)
+{
+    if (strncmp(str, buf->value, buf->length) != 0) return false;
+    return buf->length == strlen(str);
+}
