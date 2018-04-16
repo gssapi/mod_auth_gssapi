@@ -7,9 +7,9 @@ services:
   - docker
 
 env:
-  - DISTRO=fedora:rawhide COMPILER=gcc
-  - DISTRO=fedora:rawhide COMPILER=clang
-  - DISTRO=debian:sid COMPILER=clang
+  - DISTRO=fedora:27 COMPILER=gcc
+  - DISTRO=fedora:27 COMPILER=clang
+  - DISTRO=debian:testing COMPILER=clang
 
 script:
   - >
