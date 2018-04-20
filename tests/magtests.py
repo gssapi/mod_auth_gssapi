@@ -11,9 +11,9 @@ import sys
 
 # check that we can import requests (for use in test scripts)
 import requests
-import requests_kerberos
+import requests_gssapi
 del requests
-del requests_kerberos
+del requests_gssapi
 
 
 def parse_args():

@@ -5,7 +5,7 @@ import os
 from stat import ST_MODE
 
 import requests
-from requests_kerberos import HTTPKerberosAuth, OPTIONAL # noqa
+from requests_gssapi import HTTPKerberosAuth, OPTIONAL # noqa
 
 if __name__ == '__main__':
     sess = requests.Session()
