@@ -26,7 +26,7 @@ To run tests, you also need:
 
 * The Kerberos 5 Key-Distribution-Center (`krb5-kdc` package on Debian,
   `krb5-server` on Fedora)
-* Packages `mod_session`, `krb5-workstation`, `python-requests-kerberos`,
+* Packages `mod_session`, `krb5-workstation`, `python-requests-gssapi`,
   and `python-gssapi` on Fedora
 * Some tests require `krb5-pkinit` package on fedora and krb5 >= 1.15.
 * [nss_wrapper](https://cwrap.org/nss_wrapper.html), packaged in Fedora
