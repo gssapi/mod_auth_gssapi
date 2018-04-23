@@ -12,17 +12,23 @@ if [ -f /etc/debian_version ]; then
                    apache2-bin {apache2,libkrb5,libssl,gss-ntlmssp}-dev \
                    python-{dev,requests,gssapi} lib{socket,nss}-wrapper \
                    flex bison krb5-{kdc,admin-server,pkinit} \
-                   python-requests-kerberos flake8
+                   flake8 virtualenv
     flake8
+
+    # remove when python-requests-gssapi is packaged in Debian
+    virtualenv --system-site-packages .venv
+    source .venv/bin/activate
+    pip install requests-gssapi
 elif [ -f /etc/fedora-release ]; then
-    # https://bugzilla.redhat.com/show_bug.cgi?id=1483553 means that this will
-    # fail no matter what, but it will properly install the packages.
     dnf -y install $COMPILER python-gssapi krb5-{server,workstation,pkinit} \
         {httpd,krb5,openssl,gssntlmssp}-devel {socket,nss}_wrapper \
-        python-requests{,-kerberos} autoconf automake libtool which bison \
-        flex mod_session redhat-rpm-config \
-        || true
+        python-requests autoconf automake libtool which bison \
+        flex mod_session redhat-rpm-config python2-virtualenv
 
+    # remove when we're using f28+
+    virtualenv .venv
+    source .venv/bin/activate
+    pip install requests{,-gssapi}
     if [ x$COMPILER == xclang ]; then
         CFLAGS+=" -Wno-unused-command-line-argument"
     fi
