@@ -9,8 +9,22 @@ AC_CONFIG_HEADERS([src/config.h])
 
 # Checks for programs.
 AC_PROG_CC_STDC
+
+AC_CHECK_PROG(PKG_CONFIG_CHECK,pkg-config,yes)
+if test x$PKG_CONFIG_CHECK != xyes; then
+	AC_MSG_ERROR([Cannot find pkg-config. Please install pkg-config.])
+fi
+
 AC_PROG_YACC
+AC_CHECK_PROG(YACC_CHECK,$YACC,yes)
+if test x"$YACC_CHECK" != x"yes"; then
+	AC_MSG_ERROR([Cannot find a yacc-compatible parser generator. Please install bison, byacc, or yacc.])
+fi
 AC_PROG_LEX
+AC_CHECK_PROG(LEX_CHECK,$LEX,yes)
+if test x"$LEX_CHECK" != x"yes"; then
+	AC_MSG_ERROR([Cannot find a lex-compatible lexer. Please install lex, or flex.])
+fi
 AC_DECL_YYTEXT
 
 LT_INIT
