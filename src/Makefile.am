@@ -20,8 +20,7 @@ mod_auth_gssapi_la_LDFLAGS = \
     $(MAG_LIBS) \
     -avoid-version \
     -module \
-    -export-symbols-regex auth_gssapi_module \
-    $(LEXLIB)
+    -export-symbols-regex auth_gssapi_module
 
 install-exec-local:
 	test -d $(DESTDIR)$(APXS_LIBEXECDIR) || mkdir -p $(DESTDIR)$(APXS_LIBEXECDIR)
