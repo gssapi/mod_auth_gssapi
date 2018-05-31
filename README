@@ -143,11 +143,14 @@ GSS_NAME variable.
 
 ### GssapiConnectionBound
 
-When using GSS mechanisms that require more than one round-trip to complete
-authentication (like NTLMSSP) it is necessary to bind to the authentication to
-the connection in order to keep the state between round-trips. With this option
-enable incomplete context are store in the connection and retrieved on the next
-request for continuation.
+This option is not needed for krb5 or basic auth in almost all cases.  It
+incurs overhead, so leaving it off is recommended.
+
+For NTLMSSP (and any other GSS mechanisms that require more than one
+round-trip to complete authentication), it is necessary to bind to the
+authentication to the connection in order to keep the state between
+round-trips.  With this option, incomplete context are stored in the
+connection and retrieved on the next request for continuation.
 
 #### Example
     GssapiConnectionBound On
