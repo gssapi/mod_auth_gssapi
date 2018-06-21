@@ -418,15 +418,17 @@ Auth mechanism. Enable GssapiNegotiateOnce to avoid this situation.
 
 This option can be used even if AuthType GSSAPI is not used for given
 Location or LocationMatch, to obtain service ticket for a user that was
-already authenticated by different module.
+already authenticated by different module.  (This is also known as s4u2self,
+or protocol transition.)
 
 The principal of the user is retrieved from the internal r->user
 identifier which typically holds the username from the authentication
 results.
 
-Make sure the server principal is set to allow to acquire forwardable
-tickets to itself from arbitrary users, for use with constrained
-delegation, for example with the option +ok_to_auth_as_delegate.
+Optionally, this user principal can later be used for s4u2proxy (constrained
+delegation).  To do this, ensure the server principal is permitted to acquire
+forwardable tickets to itself from arbitrary users (i.e., with the option
+`+ok_to_auth_as_delegate`).
 
 - **Enable with:** GssapiImpersonate On
 - **Default:** GssapiImpersonate Off
