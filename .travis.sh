@@ -19,10 +19,14 @@ if [ -f /etc/debian_version ]; then
     virtualenv --system-site-packages .venv
     source .venv/bin/activate
     pip install requests-gssapi
-elif [ -f /etc/fedora-release ]; then
-    dnf -y install $COMPILER python-gssapi krb5-{server,workstation,pkinit} \
+elif [ -f /etc/redhat-release ]; then
+    DY=yum
+    if [ -f /etc/fedora-release ]; then
+        DY=dnf
+    fi
+    $DY -y install $COMPILER python-gssapi krb5-{server,workstation,pkinit} \
         {httpd,krb5,openssl,gssntlmssp}-devel {socket,nss}_wrapper \
-        python-requests autoconf automake libtool which bison \
+        python-requests autoconf automake libtool which bison make \
         flex mod_session redhat-rpm-config python2-virtualenv
 
     # remove when we're using f28+

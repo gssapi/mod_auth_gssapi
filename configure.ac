@@ -43,6 +43,17 @@ AC_TYPE_UINT32_T
 # Checks for library functions.
 AC_CHECK_FUNCS([strcasecmp])
 
+AC_PATH_PROGS(APACHE, [apache2 httpd apache])
+if test x"$APACHE" == x; then
+	AC_MSG_ERROR([Can't find the apache2/httpd executable!])
+fi
+chk="$(objdump -d "$APACHE" | grep ap_log_rdata)"
+if test x"$chk" != x; then
+	AC_DEFINE([HAVE_AP_LOG_RDATA], [1], [ap_log_rdata() is present])
+else
+	AC_MSG_WARN([Apache/httpd is missing ap_log_rdata; some logging will be disabled])
+fi
+
 AC_ARG_WITH([installpath],
             [AS_HELP_STRING([--with-installpath=PATH],
                             [alternative install path])],
