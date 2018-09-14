@@ -87,10 +87,16 @@ AS_IF([test "x${APR}" != "x" -a -x "${APR}"],
        AC_SUBST(APR_LDFLAGS)],
       [AC_MSG_FAILURE(["apr-1-config not found. Use --with-apr"])])
 
+# OpenSSL availability and presence of specific functions
 PKG_CHECK_MODULES([OPENSSL], [openssl])
 AC_SUBST([OPENSSL_CFLAGS])
 AC_SUBST([OPENSSL_LIBS])
+save_LIBS=$LIBS
+LIBS="$LIBS $OPENSSL_LIBS"
+AC_CHECK_FUNCS(EVP_CIPHER_CTX_new HMAC_CTX_new)
+LIBS=$save_LIBS
 
+# GSSAPI availability and presence of specific functions
 AC_CHECK_HEADERS([gssapi/gssapi.h gssapi/gssapi_ext.h gssapi/gssapi_krb5.h],
                  ,[AC_MSG_ERROR([Could not find GSSAPI headers])])
 AC_CHECK_HEADERS([gssapi/gssapi_ntlmssp.h])

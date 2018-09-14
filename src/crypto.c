@@ -1,12 +1,13 @@
 /* Copyright (C) 2014 mod_auth_gssapi contributors - See COPYING for (C) terms */
 
+#include "config.h"
 #include <openssl/evp.h>
 #include <openssl/hmac.h>
 #include <openssl/rand.h>
 #include <stdbool.h>
 #include "crypto.h"
 
-#if OPENSSL_VERSION_NUMBER < 0x10100000L || defined(LIBRESSL_VERSION_NUMBER)
+#ifndef HAVE_HMAC_CTX_NEW
 HMAC_CTX *HMAC_CTX_new(void)
 {
     HMAC_CTX *ctx;
@@ -26,7 +27,9 @@ void HMAC_CTX_free(HMAC_CTX *ctx)
     HMAC_CTX_cleanup(ctx);
     OPENSSL_free(ctx);
 }
+#endif
 
+#ifndef HAVE_EVP_CIPHER_CTX_NEW
 EVP_CIPHER_CTX *EVP_CIPHER_CTX_new(void)
 {
     EVP_CIPHER_CTX *ctx;
