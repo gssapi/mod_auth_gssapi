@@ -3,6 +3,9 @@
 #include "mod_auth_gssapi.h"
 #include "mag_parse.h"
 
+#include <sys/stat.h>
+#include <sys/types.h>
+
 const gss_OID_desc gss_mech_spnego = {
     6, "\x2b\x06\x01\x05\x05\x02"
 };
@@ -288,6 +291,7 @@ static char *get_ccache_name(request_rec *req, char *dir, const char *gss_name,
 {
     char *ccname, *escaped;
     int ccachefd;
+    mode_t umask_save;
 
     /* We need to escape away '/', we can't have path separators in
      * a ccache file name */
@@ -302,7 +306,10 @@ static char *get_ccache_name(request_rec *req, char *dir, const char *gss_name,
 
     ccname = apr_psprintf(mc->pool, "%s/%s-XXXXXX", dir, escaped);
 
+    umask_save = umask(0177);
     ccachefd = mkstemp(ccname);
+    umask(umask_save);
+
     if (ccachefd == -1) {
         ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
                       "creating unique ccache file %s failed", ccname);
