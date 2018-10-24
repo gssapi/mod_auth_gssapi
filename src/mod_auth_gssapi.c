@@ -95,14 +95,12 @@ static const char *mag_err_text(enum mag_err_code err)
 static void mag_post_info(request_rec *req, struct mag_config *cfg,
                           enum mag_err_code err, const char *msg)
 {
-    const char *text = NULL;
-
     if (cfg->enverrs) {
-        mag_publish_error(req, 0, 0, text ? text : msg, mag_err_text(err));
+        mag_publish_error(req, 0, 0, msg, mag_err_text(err));
     }
 
     ap_log_rerror(APLOG_MARK, APLOG_INFO, 0, req, "%s %s", mag_err_text(err),
-                  text ? text : msg);
+                  msg);
 }
 
 static void mag_post_error(request_rec *req, struct mag_config *cfg,
