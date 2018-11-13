@@ -133,9 +133,9 @@ proper mapping for principals not in the default realm (for example a user
 coming from a trusted realm).
 See the 'auth_to_local' option in the [realms] section of krb5.conf(5)
 
-When this options is used the resolved name is set in the REMOTE_USER variable
-however the complete client principal name is also made available in the
-GSS_NAME variable.
+When `GssapiLocalName` is set to `on`, mod_auth_gssapi will set the
+`REMOTE_USER` variable to the resolved user name. mod_auth_gssapi will also
+set the `GSS_NAME` variable to the complete client principal name.
 
 #### Example
     GssapiLocalName on
