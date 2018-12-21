@@ -8,6 +8,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import traceback
 
 # check that we can import requests (for use in test scripts)
 import requests
@@ -207,7 +208,6 @@ def setup_test_certs(testdir, testenv, logfile):
     with open(opensslcnf, 'w+') as f:
         f.write(text)
 
-    print(pkinit_key)
     cmd = subprocess.Popen(["openssl", "genrsa", "-out", pkinit_key,
                             "2048"], stdout=logfile,
                            stderr=logfile, env=testenv,
@@ -718,6 +718,8 @@ if __name__ == '__main__':
         errs += test_basic_auth_krb5(testdir, testenv, logfile)
 
         errs += test_no_negotiate(testdir, testenv, logfile)
+    except Exception:
+        traceback.print_exc()
     finally:
         for name in processes:
             logfile.write("Killing %s\n" % name)
