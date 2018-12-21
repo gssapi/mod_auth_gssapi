@@ -17,7 +17,7 @@ def getAuthToken(target):
     ctx = gssapi.SecurityContext(name=name, mech=spnego_mech)
     token = ctx.step()
 
-    return 'Negotiate %s' % b64encode(token)
+    return 'Negotiate %s' % b64encode(token).decode()
 
 
 if __name__ == '__main__':

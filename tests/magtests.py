@@ -431,7 +431,7 @@ def kinit_user(testdir, kdcenv):
                                  stdin=subprocess.PIPE,
                                  stdout=logfile, stderr=logfile,
                                  env=testenv, preexec_fn=os.setsid)
-        kinit.communicate('%s\n' % USR_PWD)
+        kinit.communicate(('%s\n' % USR_PWD).encode("utf8"))
         kinit.wait()
         if kinit.returncode != 0:
             raise ValueError('kinit failed')
@@ -494,6 +494,7 @@ def test_spnego_auth(testdir, testenv, logfile):
         error_count += 1
     else:
         sys.stderr.write('SPNEGO No Auth: SUCCESS\n')
+
 
     return error_count
 
