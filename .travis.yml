@@ -7,8 +7,8 @@ services:
   - docker
 
 env:
-  - DISTRO=fedora:27 COMPILER=gcc
-  - DISTRO=fedora:27 COMPILER=clang
+  - DISTRO=fedora:latest COMPILER=gcc
+  - DISTRO=fedora:latest COMPILER=clang
   - DISTRO=debian:sid COMPILER=clang
   - DISTRO=centos:7 COMPILER=gcc
 
