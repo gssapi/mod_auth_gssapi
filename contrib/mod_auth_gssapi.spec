@@ -43,7 +43,7 @@ install -m 644 10-auth_gssapi.conf %{buildroot}%{_httpd_modconfdir}
 %{_httpd_moddir}/mod_auth_gssapi.so
 
 %changelog
-* Wed Feb 17 2015 Simo Sorce <simo@redhat.com> 1.3.2-1
+* Wed Feb 17 2016 Simo Sorce <simo@redhat.com> 1.3.2-1
 - NEAR Shoemaker launch (1996) release (1.3.2)
 
 * Thu Sep  3 2015 Simo Sorce <simo@redhat.com> 1.3.1-1
