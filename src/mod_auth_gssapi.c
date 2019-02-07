@@ -498,15 +498,15 @@ done:
     return maj;
 }
 
-static bool mag_auth_basic(request_rec *req,
-                           struct mag_config *cfg,
-                           gss_buffer_desc ba_user,
-                           gss_buffer_desc ba_pwd,
-                           gss_name_t *client,
-                           gss_OID *mech_type,
-                           gss_cred_id_t *delegated_cred,
-                           uint32_t *vtime)
+static int mag_complete(struct mag_req_cfg *req_cfg, struct mag_conn *mc,
+                        gss_name_t client, gss_OID mech_type,
+                        uint32_t vtime, gss_cred_id_t delegated_cred);
+
+static int mag_auth_basic(struct mag_req_cfg *req_cfg, struct mag_conn *mc,
+                          gss_buffer_desc ba_user, gss_buffer_desc ba_pwd)
 {
+    struct mag_config *cfg = req_cfg->cfg;
+    request_rec *req = req_cfg->req;
     const char *user_ccache = NULL;
     const char *orig_ccache = NULL;
     long long unsigned int rndname;
@@ -517,9 +517,12 @@ static bool mag_auth_basic(request_rec *req,
     gss_OID_set allowed_mechs;
     gss_OID_set filtered_mechs;
     gss_OID_set actual_mechs = GSS_C_NO_OID_SET;
+    gss_cred_id_t delegated_cred = GSS_C_NO_CREDENTIAL;
+    gss_name_t client = GSS_C_NO_NAME;
+    uint32_t vtime;
     uint32_t maj, min;
     int present = 0;
-    bool ret = false;
+    int ret = HTTP_UNAUTHORIZED;
 
     maj = gss_import_name(&min, &ba_user, GSS_C_NT_USER_NAME, &user);
     if (GSS_ERROR(maj)) {
@@ -621,15 +624,21 @@ static bool mag_auth_basic(request_rec *req,
 
     for (int i = 0; i < actual_mechs->count; i++) {
         maj = mag_context_loop(&min, req, cfg, user_cred, server_cred,
-                               &actual_mechs->elements[i], 300, client, vtime,
-                               delegated_cred);
+                               &actual_mechs->elements[i], 300, &client,
+                               &vtime, &delegated_cred);
         if (maj == GSS_S_COMPLETE) {
-            ret = true;
+            ret = mag_complete(req_cfg, mc, client, &actual_mechs->elements[i],
+                               vtime, delegated_cred);
+            if (ret == OK) {
+                mag_basic_cache(req_cfg, mc, ba_user, ba_pwd);
+            }
             break;
         }
     }
 
 done:
+    gss_release_cred(&min, &delegated_cred);
+    gss_release_name(&min, &client);
     gss_release_cred(&min, &server_cred);
     gss_release_name(&min, &user);
     gss_release_cred(&min, &user_cred);
@@ -687,10 +696,6 @@ struct mag_req_cfg *mag_init_cfg(request_rec *req)
 
     return req_cfg;
 }
-
-static int mag_complete(struct mag_req_cfg *req_cfg, struct mag_conn *mc,
-                        gss_name_t client, gss_OID mech_type,
-                        uint32_t vtime, gss_cred_id_t delegated_cred);
 
 #ifdef HAVE_CRED_STORE
 static bool use_s4u2proxy(struct mag_req_cfg *req_cfg) {
@@ -1110,15 +1115,7 @@ static int mag_auth(request_rec *req)
 #endif
 
     if (auth_type == AUTH_TYPE_BASIC) {
-        if (mag_auth_basic(req, cfg, ba_user, ba_pwd,
-                           &client, &mech_type,
-                           &delegated_cred, &vtime)) {
-
-            ret = mag_complete(req_cfg, mc, client, mech_type, vtime,
-                               delegated_cred);
-            if (ret == OK)
-                mag_basic_cache(req_cfg, mc, ba_user, ba_pwd);
-        }
+        ret = mag_auth_basic(req_cfg, mc, ba_user, ba_pwd);
         goto done;
     }
 
