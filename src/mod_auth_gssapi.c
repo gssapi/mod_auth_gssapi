@@ -1271,7 +1271,11 @@ static int mag_complete(struct mag_req_cfg *req_cfg, struct mag_conn *mc,
 #endif
 
     if (cfg->map_to_local) {
-        maj = gss_localname(&min, client, mech_type, &lname);
+        /* We pass GSS_C_NO_OID here as passing mech_type does not work
+         * as expected with SPNEGO-wrapped names.
+         * http://krbdev.mit.edu/rt/Ticket/Display.html?id=8782
+         */
+        maj = gss_localname(&min, client, GSS_C_NO_OID, &lname);
         if (maj != GSS_S_COMPLETE) {
             mag_post_error(req, cfg, MAG_GSS_ERR, maj, min,
                            "gss_localname() failed");
