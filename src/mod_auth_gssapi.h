@@ -83,7 +83,7 @@ struct mag_config {
     gid_t deleg_ccache_gid;
     gss_key_value_set_desc *cred_store;
     bool deleg_ccache_unique;
-    bool s4u2self;
+    int s4u2self;
     char *ccname_envvar;
 #endif
     struct seal_key *mag_skey;
@@ -94,7 +94,7 @@ struct mag_config {
     bool negotiate_once;
     struct mag_name_attributes *name_attributes;
     const char *required_na_expr;
-    bool enverrs;
+    int enverrs;
     gss_name_t acceptor_name;
     bool acceptor_name_from_req;
 };
