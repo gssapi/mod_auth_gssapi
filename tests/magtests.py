@@ -495,7 +495,6 @@ def test_spnego_auth(testdir, testenv, logfile):
     else:
         sys.stderr.write('SPNEGO No Auth: SUCCESS\n')
 
-
     return error_count
 
 
