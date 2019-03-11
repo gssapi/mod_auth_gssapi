@@ -686,7 +686,7 @@ if __name__ == '__main__':
 
         # support virtualenv
         testenv['PATH'] = os.environ.get('PATH', '')
-        testenv['ViRTUAL_ENV'] = os.environ.get('VIRTUAL_ENV', '')
+        testenv['VIRTUAL_ENV'] = os.environ.get('VIRTUAL_ENV', '')
 
         testenv['DELEGCCACHE'] = os.path.join(testdir, 'httpd',
                                               USR_NAME + '@' + TESTREALM)
@@ -715,6 +715,9 @@ if __name__ == '__main__':
                    'MAG_USER_NAME_2': USR_NAME_2,
                    'MAG_USER_PASSWORD_2': USR_PWD_2}
         testenv.update(kdcenv)
+        testenv['PATH'] = os.environ.get('PATH', '')
+        testenv['VIRTUAL_ENV'] = os.environ.get('VIRTUAL_ENV', '')
+
         errs += test_basic_auth_krb5(testdir, testenv, logfile)
 
         errs += test_no_negotiate(testdir, testenv, logfile)
