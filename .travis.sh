@@ -1,24 +1,19 @@
 #!/bin/bash -ex
 
-CFLAGS="-Werror"
-if [ x$COMPILER == xclang ]; then
-    CFLAGS+=" -Wno-missing-field-initializers"
-    CFLAGS+=" -Wno-missing-braces -Wno-cast-align"
-fi
-
 if [ -f /etc/debian_version ]; then
-    apt-get update
-    DEBIAN_FRONTEND=noninteractive apt-get -y install $COMPILER pkg-config \
-                   apache2-bin {apache2,libkrb5,libssl,gss-ntlmssp}-dev \
-                   python3-{dev,requests,gssapi} lib{socket,nss}-wrapper \
-                   flex bison krb5-{kdc,admin-server,pkinit} \
-                   flake8 virtualenv
-    flake8
+    PYTHON=python3
+    export DEBIAN_FRONTEND=noninteractive
 
-    # remove when python-requests-gssapi is packaged in Debian
-    virtualenv -p python3 --system-site-packages .venv
-    source .venv/bin/activate
-    pip install requests-gssapi
+    apt-get update
+
+    apt-get -y install $COMPILER pkg-config flake8 virtualenv \
+            apache2-bin {apache2,libkrb5,libssl,gss-ntlmssp}-dev \
+            $PYTHON{,-dev,-requests} lib{socket,nss}-wrapper \
+            flex bison krb5-{kdc,admin-server,pkinit}
+
+    apt-get -y install $PYTHON-requests-gssapi || true
+
+    flake8
 elif [ -f /etc/redhat-release ]; then
     DY=yum
     PYTHON=python2
@@ -26,23 +21,47 @@ elif [ -f /etc/redhat-release ]; then
         DY=dnf
         PYTHON=python3
     fi
-    $DY -y install $COMPILER python-gssapi krb5-{server,workstation,pkinit} \
+
+    $DY -y install $COMPILER $PYTHON-{gssapi,requests} \
+        krb5-{server,workstation,pkinit} \
         {httpd,krb5,openssl,gssntlmssp}-devel {socket,nss}_wrapper \
         autoconf automake libtool which bison make $PYTHON \
         flex mod_session redhat-rpm-config /usr/bin/virtualenv
 
-    # remove when we're using f28+
-    virtualenv -p $PYTHON .venv
-    source .venv/bin/activate
-    pip install requests{,-gssapi}
-    if [ x$COMPILER == xclang ]; then
-        CFLAGS+=" -Wno-unused-command-line-argument"
-    fi
+    $DY -y install python-requests-gssapi || true
 else
     echo "Distro not found!"
     false
 fi
 
+CFLAGS="-Werror"
+if [ x$COMPILER == xclang ]; then
+    CFLAGS+=" -Wno-missing-field-initializers"
+    CFLAGS+=" -Wno-missing-braces -Wno-cast-align"
+
+    # So this is just a sad hack to get around:
+    #     clang-7: error: unknown argument: '-fstack-clash-protection'
+    # which doesn't seem to have a solution right now.
+    cp=$(which clang)
+    mv $cp $cp.real
+    cat > $cp <<EOF
+#!/usr/bin/env python
+import os
+import sys
+argv = [a for a in sys.argv if a != "-fstack-clash-protection" \
+        and not a.startswith("-specs")]
+argv[0] = "${cp}.real"
+os.execve(argv[0], argv, {})
+EOF
+    chmod +x $cp
+fi
+
+virtualenv --system-site-packages -p $(which $PYTHON) .venv
+source .venv/bin/activate
+pip install requests{,-gssapi}
+
+scratch=/tmp/build/mod_auth_gssapi-*/_build/sub/testsdir
+
 autoreconf -fiv
 ./configure # overridden by below, but needs to generate Makefile
-make distcheck DISTCHECK_CONFIGURE_FLAGS="CFLAGS=\"$CFLAGS\" CC=$(which $COMPILER)"
+make distcheck DISTCHECK_CONFIGURE_FLAGS="CFLAGS=\"$CFLAGS\" CC=$(which $COMPILER)" || (cat $scratch/tests.log $scratch/httpd/logs/error_log; exit -1)

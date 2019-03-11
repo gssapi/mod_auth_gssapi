@@ -1,4 +1,5 @@
 sudo: required
+dist: xenial
 
 # not required, but less confusing if defined
 language: C
