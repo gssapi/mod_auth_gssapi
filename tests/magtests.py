@@ -773,6 +773,22 @@ def http_restart(testdir, so_dir, testenv):
     return httpproc
 
 
+def test_mech_name(testdir, testenv, logfile):
+    basicdir = os.path.join(testdir, 'httpd', 'html', 'mech_name')
+    os.mkdir(basicdir)
+    shutil.copy('tests/mech.html', basicdir)
+
+    mname = subprocess.Popen(["tests/t_mech_name.py"],
+                             stdout=logfile, stderr=logfile,
+                             env=testenv, preexec_fn=os.setsid)
+    mname.wait()
+    if mname.returncode != 0:
+        sys.stderr.write('MECH-NAME: FAILED\n')
+        return 1
+    sys.stderr.write('MECH-NAME: SUCCESS\n')
+    return 0
+
+
 if __name__ == '__main__':
     args = parse_args()
 
@@ -831,6 +847,8 @@ if __name__ == '__main__':
         errs += test_basic_auth_krb5(testdir, testenv, logfile)
 
         errs += test_no_negotiate(testdir, testenv, logfile)
+
+        errs += test_mech_name(testdir, testenv, logfile)
 
         # After this point we need to speed up httpd to test creds timeout
         try:

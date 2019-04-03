@@ -95,6 +95,7 @@ struct mag_config {
     struct mag_name_attributes *name_attributes;
     const char *required_na_expr;
     int enverrs;
+    int pubmech;
     gss_name_t acceptor_name;
     bool acceptor_name_from_req;
     uint32_t basic_timeout;

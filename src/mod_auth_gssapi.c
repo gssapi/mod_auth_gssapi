@@ -1294,6 +1294,10 @@ static int mag_complete(struct mag_req_cfg *req_cfg, struct mag_conn *mc,
         mc->user_name = apr_pstrdup(mc->pool, mc->gss_name);
     }
 
+    if (cfg->pubmech) {
+        mag_publish_mech(req, mc, mag_str_auth_type(mc->auth_type), mech_type);
+    }
+
     mc->established = true;
     if (req_cfg->use_sessions) {
         mag_attempt_session(req_cfg, mc);
@@ -1899,6 +1903,9 @@ static const command_rec mag_commands[] = {
     AP_INIT_FLAG("GssapiPublishErrors", ap_set_flag_slot,
                  (void *)APR_OFFSETOF(struct mag_config, enverrs), OR_AUTHCFG,
                  "Publish GSSAPI Errors in Envionment Variables"),
+    AP_INIT_FLAG("GssapiPublishMech", ap_set_flag_slot,
+                 (void *)APR_OFFSETOF(struct mag_config, pubmech), OR_AUTHCFG,
+                 "Publish GSSAPI Mech Name in Envionment Variables"),
     AP_INIT_RAW_ARGS("GssapiAcceptorName", mag_acceptor_name, NULL, OR_AUTHCFG,
                      "Name of the acceptor credentials."),
     AP_INIT_TAKE1("GssapiBasicTicketTimeout", mag_basic_timeout, NULL,

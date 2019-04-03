@@ -25,6 +25,7 @@ ylwrap
 src/lex.c
 src/parser.c
 src/parser.h
+testdir/
 *.o
 *.lo
 *.la

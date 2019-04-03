@@ -498,3 +498,41 @@ void mag_publish_error(request_rec *req, uint32_t maj, uint32_t min,
     if (mag_err)
         apr_table_set(req->subprocess_env, "MAG_ERROR", mag_err);
 }
+
+void mag_publish_mech(request_rec *req, struct mag_conn *mc,
+                      const char *auth_type, gss_OID mech_type)
+{
+    gss_buffer_desc sasl_mech_name = GSS_C_EMPTY_BUFFER;
+    gss_buffer_desc mech_name = GSS_C_EMPTY_BUFFER;
+    gss_buffer_desc mech_description = GSS_C_EMPTY_BUFFER;
+    char *mechdata;
+    uint32_t maj, min;
+
+    maj = gss_inquire_saslname_for_mech(&min, mech_type, &sasl_mech_name,
+                                        &mech_name, &mech_description);
+    if (maj != GSS_S_COMPLETE) {
+        /* something failed, let's try to get a string OID */
+        /* and if that fails there is nothing we can do */
+        maj = gss_oid_to_str(&min, mech_type, &mech_name);
+        if (maj != GSS_S_COMPLETE) {
+            ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, req,
+                          "Failed to source mechanism name or OID");
+            mech_name.value = strdup("Unavailable");
+            mech_name.length = strlen(mech_name.value);
+        }
+    }
+
+    mechdata = apr_psprintf(req->pool, "%s/%.*s", auth_type,
+                            (int)mech_name.length,
+                            (char *)mech_name.value);
+
+    apr_table_set(mc->env, "GSS_MECH", mechdata);
+
+    /* also log at info level */
+    ap_log_rerror(APLOG_MARK, APLOG_INFO|APLOG_NOERRNO, 0, req,
+                  "User %s authenticated with %s", mc->gss_name, mechdata);
+
+    (void)gss_release_buffer(&min, &sasl_mech_name);
+    (void)gss_release_buffer(&min, &mech_name);
+    (void)gss_release_buffer(&min, &mech_description);
+}

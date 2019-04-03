@@ -109,6 +109,7 @@ Configuration Directives
 [GssapiNameAttributes](#gssapinameattributes)<br>
 [GssapiNegotiateOnce](#gssapinegotiateonce)<br>
 [GssapiPublishErrors](#gssapipublisherrors)<br>
+[GssapiPublishMech](#gssapipublishmech)<br>
 [GssapiRequiredNameAttributes](#gssapirequirednameattributes)<br>
 [GssapiSessionKey](#gssapisessionkey)<br>
 [GssapiSignalPersistentAuth](#gssapisignalpersistentauth)<br>
@@ -543,3 +544,17 @@ Note: the value is specified in seconds.
 Sets ticket/session validity to 10 hours.
 
 
+### GssapiPublishMech
+
+This option is used to publish the mech used for authentication as an
+Environment variable named GSS_MECH.
+
+It will return a string of the form 'Authtype/Mechname'.
+Authtype represents the type of auth performed by the module. Possible values
+are 'Basic', 'Negotiate', 'NTLM', 'Impersonate'.
+Mechname is the name of the mechanism as reported by GSSAPI or the OID of the
+mechanism if a name is not available. In case of errors the 'Unavailable'
+string may also be returned for either Authtype or Mechname.
+
+- **Enable with:** GssapiPublishMech On
+- **Default:** GssapiPublishMech Off
