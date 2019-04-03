@@ -20,6 +20,11 @@ missing
 config.h
 config.h.in*
 stamp-h1
+cscope.out
+ylwrap
+src/lex.c
+src/parser.c
+src/parser.h
 *.o
 *.lo
 *.la
