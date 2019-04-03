@@ -1157,11 +1157,11 @@ static int mag_auth(request_rec *req)
 
     ret = mag_complete(req_cfg, mc, client, mech_type, vtime, delegated_cred);
 
+done:
     if (ret == OK && req_cfg->send_persist)
         apr_table_set(req->err_headers_out, "Persistent-Auth",
             cfg->gss_conn_ctx ? "true" : "false");
 
-done:
     if ((auth_type != AUTH_TYPE_BASIC) && (output.length != 0)) {
         int prefixlen = strlen(mag_str_auth_type(auth_type)) + 1;
         replen = apr_base64_encode_len(output.length) + 1;
