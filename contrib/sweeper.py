@@ -9,9 +9,18 @@
 # removing any ccaches that have expired from the filesystem, and serves as an
 # example of how this cleaning can be performed.
 
+# gssproxy note: in order to sweep credentials, the sweeper needs to connect
+# to gssproxy as if it were mod_auth_gssapi.  In the configuration provided
+# with mod_auth_gssapi (80-httpd.conf), this just consists of matching the
+# gssproxy uid - so run it as the appropriate user (i.e., apache).  Custom
+# configurations require careful consideration of how to match the sweeper
+# connection to the correct service in gssproxy; this script is just an
+# example.  This script will not attempt to contact gssproxy unless -g is
+# passed.
+
+import argparse
 import os
 import stat
-import sys
 import time
 
 # try importing this first to provide a more useful error message
@@ -48,16 +57,21 @@ def should_delete(fname, t):
 
 
 if __name__ == "__main__":
-    dirs = sys.argv[1:]
-    if len(dirs) < 1:
-        print("Usage: %s dir1 [dir2...]" % sys.argv[0])
-        exit(1)
+    parser = argparse.ArgumentParser(description="Sweep expired ccaches")
+    parser.add_argument("-g", dest="gssproxy", action="store_true",
+                        help="is gssproxy in use (default: no)")
+    parser.add_argument("dirs", nargs='+')
+    args = parser.parse_args()
+
+    if args.gssproxy:
+        os.environ["GSS_USE_PROXY"] = "yes"
+        os.environ["GSSPROXY_BEHAVIOR"] = "REMOTE_FIRST"
 
     print("System looks okay; running sweeper...")
 
     t = time.time()
 
-    for basedir in dirs:
+    for basedir in args.dirs:
         os.chdir(basedir)
         print("Sweeping %s" % basedir)
 

@@ -245,7 +245,8 @@ suffix.
 
 **Note:** Consuming application must delete the ccache otherwise it will
 litter the filesystem if sessions are used.  An example sweeper can be found
-in the contrib directory.
+in the contrib directory.  If using with gssproxy, see note at the top of that
+file.
 
 #### Example
     GssapiDelegCcacheUnique On
