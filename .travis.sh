@@ -11,7 +11,7 @@ if [ -f /etc/debian_version ]; then
             $PYTHON{,-dev,-requests} lib{socket,nss}-wrapper \
             flex bison krb5-{kdc,admin-server,pkinit}
 
-    apt-get -y install $PYTHON-requests-gssapi || true
+    apt-get -y install $PYTHON-requests-gssapi 2>/dev/null || true
 
     flake8
 elif [ -f /etc/redhat-release ]; then
@@ -28,7 +28,7 @@ elif [ -f /etc/redhat-release ]; then
         autoconf automake libtool which bison make $PYTHON \
         flex mod_session redhat-rpm-config /usr/bin/virtualenv
 
-    $DY -y install python-requests-gssapi || true
+    $DY -y install python-requests-gssapi 2>/dev/null || true
 else
     echo "Distro not found!"
     false
