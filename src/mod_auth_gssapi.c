@@ -987,9 +987,9 @@ static int mag_auth(request_rec *req)
     auth_header = apr_table_get(req->headers_in, req_cfg->req_proto);
 
     if (mc) {
-        if (mc->established &&
+        if (mc->established && (cfg->force_session ||
             (auth_header == NULL) &&
-            (mc->auth_type != AUTH_TYPE_BASIC)) {
+            (mc->auth_type != AUTH_TYPE_BASIC))) {
             ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, req,
                           "Already established context found!");
             mag_set_req_data(req, cfg, mc);
@@ -1344,6 +1344,13 @@ static const char *mag_use_sess(cmd_parms *parms, void *mconfig, int on)
 {
     struct mag_config *cfg = (struct mag_config *)mconfig;
     cfg->use_sessions = on ? true : false;
+    return NULL;
+}
+
+static const char *mag_force_sess(cmd_parms *parms, void *mconfig, int on)
+{
+    struct mag_config *cfg = (struct mag_config *)mconfig;
+    cfg->force_session = on ? true : false;
     return NULL;
 }
 
@@ -1836,6 +1843,8 @@ static const command_rec mag_commands[] = {
                   "Send Persitent-Auth header according to connection bound"),
     AP_INIT_FLAG("GssapiUseSessions", mag_use_sess, NULL, OR_AUTHCFG,
                   "Authentication uses mod_sessions to hold status"),
+    AP_INIT_FLAG("GssapiForceSession", mag_force_sess, NULL, OR_AUTHCFG,
+                  "Use negotiated session even when Basic auth is requested"),
     AP_INIT_RAW_ARGS("GssapiSessionKey", mag_sess_key, NULL, OR_AUTHCFG,
                      "Key Used to seal session data."),
 #ifdef HAVE_CRED_STORE
