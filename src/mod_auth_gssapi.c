@@ -988,8 +988,8 @@ static int mag_auth(request_rec *req)
 
     if (mc) {
         if (mc->established && (cfg->force_session ||
-            (auth_header == NULL) &&
-            (mc->auth_type != AUTH_TYPE_BASIC))) {
+            ((auth_header == NULL) &&
+            (mc->auth_type != AUTH_TYPE_BASIC)))) {
             ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, req,
                           "Already established context found!");
             mag_set_req_data(req, cfg, mc);
