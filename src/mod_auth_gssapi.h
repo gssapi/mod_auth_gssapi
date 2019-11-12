@@ -75,6 +75,7 @@ struct mag_config {
     bool gss_conn_ctx;
     bool send_persist;
     bool use_sessions;
+    bool force_session;
 #ifdef HAVE_CRED_STORE
     bool use_s4u2proxy;
     char *deleg_ccache_dir;
