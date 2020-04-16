@@ -121,8 +121,8 @@ Configuration Directives
 Forces the authentication attempt to fail if the connection is not being
 established over TLS
 
-#### Example
-    GssapiSSLonly On
+- **Enable with:** GssapiSSLonly On
+- **Default:** GssapiSSLonly Off
 
 
 ### GssapiLocalName
@@ -137,8 +137,8 @@ When `GssapiLocalName` is set to `on`, mod_auth_gssapi will set the
 `REMOTE_USER` variable to the resolved user name. mod_auth_gssapi will also
 set the `GSS_NAME` variable to the complete client principal name.
 
-#### Example
-    GssapiLocalName on
+- **Enable with:** GssapiLocalName On
+- **Default:** GssapiLocalName Off
 
 
 ### GssapiConnectionBound
@@ -152,8 +152,8 @@ authentication to the connection in order to keep the state between
 round-trips.  With this option, incomplete context are stored in the
 connection and retrieved on the next request for continuation.
 
-#### Example
-    GssapiConnectionBound On
+- **Enable with:** GssapiConnectionBound On
+- **Default:** GssapiConnectionBound Off
 
 
 ### GssapiSignalPersistentAuth
@@ -161,8 +161,8 @@ connection and retrieved on the next request for continuation.
 For clients that make use of Persistent-Auth header, send the header according
 to GssapiConnectionBound setting.
 
-#### Example
-    GssapiSignalPersistentAuth On
+- **Enable with:** GssapiSignalPersistentAuth On
+- **Default:** GssapiSignalPersistentAuth Off
 
 
 ### GssapiUseSessions
@@ -178,6 +178,9 @@ GSSAPI session established at authentication.
 See the
 [mod_sessions](http://httpd.apache.org/docs/current/mod/mod_session.html)
 documentation for more information.
+
+- **Enable with:** GssapiUseSessions On
+- **Default:** GssapiUseSessions Off
 
 #### Example
     GssapiUseSessions On
@@ -248,8 +251,8 @@ litter the filesystem if sessions are used.  An example sweeper can be found
 in the contrib directory.  If using with gssproxy, see note at the top of that
 file.
 
-#### Example
-    GssapiDelegCcacheUnique On
+- **Enable with:** GssapiDelegCcacheUnique On
+- **Default:** GssapiDelegCcacheUnique Off
 
 
 ### GssapiDelegCcacheEnvVar
