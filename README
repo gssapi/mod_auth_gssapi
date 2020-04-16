@@ -119,7 +119,14 @@ Configuration Directives
 ### GssapiSSLonly
 
 Forces the authentication attempt to fail if the connection is not being
-established over TLS
+established over TLS. The default is "Off", which could be helpful in a
+local development environment, but we do not recommend for production
+deployments. A passive adversary could listen to the plaintext HTTP connection
+to observe any private information in the client's request or server's
+response (for example: the full HTTP response body, or any web application
+session cookies, etc). You should only use mod_auth_gssapi with HTTPS in
+production, so we recommend that you *enable* this setting in production for
+added protection.
 
 - **Enable with:** GssapiSSLonly On
 - **Default:** GssapiSSLonly Off
