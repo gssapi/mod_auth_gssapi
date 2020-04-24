@@ -9,7 +9,7 @@ if [ -f /etc/debian_version ]; then
     apt-get -y install $COMPILER pkg-config flake8 virtualenv \
             apache2-bin {apache2,libkrb5,libssl,gss-ntlmssp}-dev \
             $PYTHON{,-dev,-requests} lib{socket,nss}-wrapper \
-            flex bison krb5-{kdc,admin-server,pkinit}
+            flex bison krb5-{kdc,admin-server,pkinit} curl
 
     apt-get -y install $PYTHON-requests-gssapi 2>/dev/null || true
 
@@ -23,7 +23,7 @@ elif [ -f /etc/redhat-release ]; then
     fi
 
     $DY -y install $COMPILER $PYTHON-{gssapi,requests} \
-        krb5-{server,workstation,pkinit} \
+        krb5-{server,workstation,pkinit} curl \
         {httpd,krb5,openssl,gssntlmssp}-devel {socket,nss}_wrapper \
         autoconf automake libtool which bison make $PYTHON \
         flex mod_session redhat-rpm-config /usr/bin/virtualenv

@@ -56,12 +56,20 @@ def setup_wrappers(base):
         f.write('%s %s\n' % (WRAP_IPADDR, WRAP_ALIASNAME))
         f.write('%s %s\n' % (WRAP_IPADDR, WRAP_FAILNAME))
 
+    passwd_file = os.path.join(testdir, 'passwd')
+    with open(passwd_file, 'w+') as f:
+        f.write('root:x:0:0:root:/root:/bin/sh')
+        f.write('maguser:x:1:1:maguser:/maguser:/bin/sh')
+        f.write('maguser2:x:2:2:maguser2:/maguser2:/bin/sh')
+        f.write('maguser3:x:3:3:maguser3:/maguser3:/bin/sh')
+
     wenv = {'LD_PRELOAD': 'libsocket_wrapper.so libnss_wrapper.so',
             'SOCKET_WRAPPER_DIR': wrapdir,
             'SOCKET_WRAPPER_DEFAULT_IFACE': '9',
             'WRAP_PROXY_PORT': WRAP_PROXY_PORT,
             'NSS_WRAPPER_HOSTNAME': WRAP_HOSTNAME,
-            'NSS_WRAPPER_HOSTS': hosts_file}
+            'NSS_WRAPPER_HOSTS': hosts_file,
+            'NSS_WRAPPER_PASSWD': passwd_file}
     return wenv
 
 
@@ -660,6 +668,40 @@ def test_hostname_acceptor(testdir, testenv, logfile):
     return 0
 
 
+def test_gss_localname(testdir, testenv, logfile):
+    hdir = os.path.join(testdir, 'httpd', 'html', 'gss_localname')
+    os.mkdir(hdir)
+    shutil.copy('tests/localname.html', os.path.join(hdir, 'index.html'))
+    error_count = 0
+
+    # Make sure spnego is explicitly tested
+    spnego = subprocess.Popen(["tests/t_localname.py", "SPNEGO"],
+                              stdout=logfile, stderr=logfile,
+                              env=testenv, preexec_fn=os.setsid)
+    spnego.wait()
+    if spnego.returncode != 0:
+        sys.stderr.write('LOCALNAME(SPNEGO): FAILED\n')
+        error_count += 1
+    else:
+        sys.stderr.write('LOCALNAME(SPNEGO): SUCCESS\n')
+
+    # and bare krb5 (GS2-KRB5 is the name used by SASL for it)
+    krb5 = subprocess.Popen(["tests/t_localname.py", "GS2-KRB5"],
+                            stdout=logfile, stderr=logfile,
+                            env=testenv, preexec_fn=os.setsid)
+    krb5.wait()
+    if krb5.returncode != 0:
+        if krb5.returncode == 42:
+            sys.stderr.write('LOCALNAME(KRB5): SKIPPED\n')
+        else:
+            sys.stderr.write('LOCALNAME(KRB5): FAILED\n')
+            error_count += 1
+    else:
+        sys.stderr.write('LOCALNAME(KRB5): SUCCESS\n')
+
+    return error_count
+
+
 if __name__ == '__main__':
     args = parse_args()
 
@@ -700,6 +742,9 @@ if __name__ == '__main__':
         errs += test_hostname_acceptor(testdir, testenv, logfile)
 
         errs += test_bad_acceptor_name(testdir, testenv, logfile)
+
+        testenv['MAG_REMOTE_USER'] = USR_NAME
+        errs += test_gss_localname(testdir, testenv, logfile)
 
         rpm_path = "/usr/lib64/krb5/plugins/preauth/pkinit.so"
         deb_path = "/usr/lib/x86_64-linux-gnu/krb5/plugins/preauth/pkinit.so"
