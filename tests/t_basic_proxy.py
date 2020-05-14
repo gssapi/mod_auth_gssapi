@@ -2,6 +2,7 @@
 # Copyright (C) 2015 - mod_auth_gssapi contributors, see COPYING for license.
 
 import os
+
 import requests
 from requests.auth import HTTPBasicAuth
 

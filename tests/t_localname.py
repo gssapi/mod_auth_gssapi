@@ -2,11 +2,15 @@
 # Copyright (C) 2020 - mod_auth_gssapi contributors, see COPYING for license.
 
 import os
-import gssapi
-import requests
 import subprocess
 import sys
+
+import gssapi
+
+import requests
+
 from requests_gssapi import HTTPSPNEGOAuth
+
 
 def use_requests(auth):
     sess = requests.Session()
@@ -39,14 +43,14 @@ if __name__ == '__main__':
     if len(sys.argv) > 1:
         mech_name = sys.argv[1]
 
-    mech=None
+    mech = None
     if mech_name is not None:
         mech = gssapi.mechs.Mechanism.from_sasl_name(mech_name)
 
     try:
         auth = HTTPSPNEGOAuth(mech=mech)
         use_requests(auth)
-    except TypeError as e:
+    except TypeError:
         # odler version of requests that does not support mechs
         if mech_name == 'SPNEGO':
             use_curl()
@@ -55,4 +59,4 @@ if __name__ == '__main__':
             auth = HTTPSPNEGOAuth()
             use_requests(auth)
         else:
-            sys.exit(42) # SKIP
+            sys.exit(42)  # SKIP

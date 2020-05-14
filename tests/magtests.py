@@ -12,6 +12,7 @@ import traceback
 
 # check that we can import requests (for use in test scripts)
 import requests
+
 import requests_gssapi
 del requests
 del requests_gssapi
