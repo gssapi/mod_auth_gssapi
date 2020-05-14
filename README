@@ -97,6 +97,7 @@ Configuration Directives
 [GssapiAllowedMech](#gssapiallowedmech)<br>
 [GssapiBasicAuth](#gssapibasicauth)<br>
 [GssapiBasicAuthMech](#gssapibasicauthmech)<br>
+[GssapiBasicTicketTimeout](#gssapibasicticketvalidity)<br>
 [GssapiConnectionBound](#gssapiconnectionbound)<br>
 [GssapiCredStore](#gssapicredstore)<br>
 [GssapiDelegCcacheDir](#gssapidelegccachedir)<br>
@@ -517,5 +518,28 @@ Note: The GSS_C_NT_HOSTBASED_SERVICE format is used for names (see example).
 
 #### Example
     GssapiAcceptorName HTTP@www.example.com
+
+
+### GssapiBasicTicketTimeout
+
+This option controls the ticket validity time requested for the user TGT by the
+Basic Auth method.
+
+Normally basic auth is repeated by the browser on each request so a short
+validity period is used to reduce the scope of the ticket as it will be
+replaced quickly.
+However in cases where the authentication page is separate and the session
+is used by other pages the validity can be changed to arbitrary duration.
+
+Note: the validity of a ticket is still capped by KDC configuration.
+
+Note: the value is specified in seconds.
+
+- **Default:** GssapiBasicTicketTimeout 300
+
+#### Example
+    GssapiBasicTicketTimeout 36000
+
+Sets ticket/session validity to 10 hours.
 
 

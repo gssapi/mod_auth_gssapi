@@ -97,6 +97,7 @@ struct mag_config {
     int enverrs;
     gss_name_t acceptor_name;
     bool acceptor_name_from_req;
+    uint32_t basic_timeout;
 };
 
 struct mag_server_config {

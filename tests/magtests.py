@@ -3,11 +3,13 @@
 
 import argparse
 import os
+import os.path
 import random
 import shutil
 import signal
 import subprocess
 import sys
+import time
 import traceback
 
 # check that we can import requests (for use in test scripts)
@@ -63,6 +65,7 @@ def setup_wrappers(base):
         f.write('maguser:x:1:1:maguser:/maguser:/bin/sh')
         f.write('maguser2:x:2:2:maguser2:/maguser2:/bin/sh')
         f.write('maguser3:x:3:3:maguser3:/maguser3:/bin/sh')
+        f.write('timeoutusr:x:4:4:timeoutusr:/timeoutusr:/bin/sh')
 
     wenv = {'LD_PRELOAD': 'libsocket_wrapper.so libnss_wrapper.so',
             'SOCKET_WRAPPER_DIR': wrapdir,
@@ -350,6 +353,7 @@ USR_PWD_2 = "magpwd2"
 USR_NAME_3 = "maguser3"
 SVC_KTNAME = "httpd/http.keytab"
 KEY_TYPE = "aes256-cts-hmac-sha1-96:normal"
+USR_NAME_4 = "timeoutusr"
 
 
 def setup_keys(tesdir, env):
@@ -368,6 +372,9 @@ def setup_keys(tesdir, env):
     kadmin_local(cmd, env, logfile)
 
     cmd = "addprinc -pw %s -e %s %s" % (USR_PWD_2, KEY_TYPE, USR_NAME_2)
+    kadmin_local(cmd, env, logfile)
+
+    cmd = "addprinc -pw %s -e %s %s" % (USR_PWD, KEY_TYPE, USR_NAME_4)
     kadmin_local(cmd, env, logfile)
 
     # alias for multinamed hosts testing
@@ -608,6 +615,30 @@ def test_basic_auth_krb5(testdir, testenv, logfile):
     return error_count
 
 
+def test_basic_auth_timeout(testdir, testenv, logfile):
+    httpdir = os.path.join(testdir, 'httpd')
+    timeoutdir = os.path.join(httpdir, 'html', 'basic_auth_timeout')
+    os.mkdir(timeoutdir)
+    authdir = os.path.join(timeoutdir, 'auth')
+    os.mkdir(authdir)
+    sessdir = os.path.join(timeoutdir, 'session')
+    os.mkdir(sessdir)
+    shutil.copy('tests/index.html', os.path.join(authdir))
+    shutil.copy('tests/index.html', os.path.join(sessdir))
+
+    basictout = subprocess.Popen(["tests/t_basic_timeout.py"],
+                                 stdout=logfile, stderr=logfile,
+                                 env=testenv, preexec_fn=os.setsid)
+    basictout.wait()
+    if basictout.returncode != 0:
+        sys.stderr.write('BASIC Timeout Behavior: FAILED\n')
+        return 1
+    else:
+        sys.stderr.write('BASIC Timeout Behavior: SUCCESS\n')
+
+    return 0
+
+
 def test_bad_acceptor_name(testdir, testenv, logfile):
     bandir = os.path.join(testdir, 'httpd', 'html', 'bad_acceptor_name')
     os.mkdir(bandir)
@@ -703,6 +734,33 @@ def test_gss_localname(testdir, testenv, logfile):
     return error_count
 
 
+def faketime_setup(testenv):
+    libfaketime = '/usr/lib64/faketime/libfaketime.so.1'
+    # optional faketime
+    if not os.path.isfile(libfaketime):
+        raise NotImplementedError
+
+    # spedup x100
+    fakeenv = {'FAKETIME': '+0 x100'}
+    fakeenv.update(testenv)
+    fakeenv['LD_PRELOAD'] = ' '.join((testenv['LD_PRELOAD'], libfaketime))
+    return fakeenv
+
+
+def http_restart(testdir, so_dir, testenv):
+
+    httpenv = {'PATH': '/sbin:/bin:/usr/sbin:/usr/bin',
+               'MALLOC_CHECK_': '3',
+               'MALLOC_PERTURB_': str(random.randint(0, 32767) % 255 + 1)}
+    httpenv.update(testenv)
+
+    httpd = "httpd" if os.path.exists("/etc/httpd/modules") else "apache2"
+    config = os.path.join(testdir, 'httpd', 'httpd.conf')
+    httpproc = subprocess.Popen([httpd, '-DFOREGROUND', '-f', config],
+                                env=httpenv, preexec_fn=os.setsid)
+    return httpproc
+
+
 if __name__ == '__main__':
     args = parse_args()
 
@@ -767,6 +825,25 @@ if __name__ == '__main__':
         errs += test_basic_auth_krb5(testdir, testenv, logfile)
 
         errs += test_no_negotiate(testdir, testenv, logfile)
+
+        # After this point we need to speed up httpd to test creds timeout
+        try:
+            fakeenv = faketime_setup(kdcenv)
+            timeenv = {'TIMEOUT_USER': USR_NAME_4,
+                       'MAG_USER_PASSWORD': USR_PWD}
+            timeenv.update(fakeenv)
+            curporc = httpproc
+            pid = processes['HTTPD(%d)' % httpproc.pid].pid
+            os.killpg(pid, signal.SIGTERM)
+            time.sleep(1)
+            del processes['HTTPD(%d)' % httpproc.pid]
+            httpproc = http_restart(testdir, so_dir, timeenv)
+            processes['HTTPD(%d)' % httpproc.pid] = httpproc
+
+            errs += test_basic_auth_timeout(testdir, timeenv, logfile)
+        except NotImplementedError:
+            sys.stderr.write('BASIC Timeout Behavior: SKIPPED\n')
+
     except Exception:
         traceback.print_exc()
     finally:

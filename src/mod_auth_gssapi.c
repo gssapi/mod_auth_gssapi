@@ -1,4 +1,5 @@
-/* Copyright (C) 2014, 2016 mod_auth_gssapi contributors - See COPYING for (C) terms */
+/* Copyright (C) 2014, 2016, 2020 mod_auth_gssapi contributors
+ * See COPYING for (C) terms */
 
 #include "mod_auth_gssapi.h"
 #include "mag_parse.h"
@@ -605,7 +606,7 @@ static int mag_auth_basic(struct mag_req_cfg *req_cfg, struct mag_conn *mc,
     }
 
     maj = gss_acquire_cred_with_password(&min, user, &ba_pwd,
-                                         GSS_C_INDEFINITE,
+                                         cfg->basic_timeout,
                                          allowed_mechs,
                                          GSS_C_INITIATE,
                                          &user_cred, &actual_mechs, NULL);
@@ -624,8 +625,8 @@ static int mag_auth_basic(struct mag_req_cfg *req_cfg, struct mag_conn *mc,
 
     for (int i = 0; i < actual_mechs->count; i++) {
         maj = mag_context_loop(&min, req, cfg, user_cred, server_cred,
-                               &actual_mechs->elements[i], 300, &client,
-                               &vtime, &delegated_cred);
+                               &actual_mechs->elements[i], cfg->basic_timeout,
+                               &client, &vtime, &delegated_cred);
         if (maj == GSS_S_COMPLETE) {
             ret = mag_complete(req_cfg, mc, client, &actual_mechs->elements[i],
                                vtime, delegated_cred);
@@ -1318,6 +1319,7 @@ static void *mag_create_dir_config(apr_pool_t *p, char *dir)
 #ifdef HAVE_CRED_STORE
     cfg->ccname_envvar = "KRB5CCNAME";
 #endif
+    cfg->basic_timeout = 300;
 
     return cfg;
 }
@@ -1808,6 +1810,21 @@ static const char *mag_acceptor_name(cmd_parms *parms, void *mconfig,
     return NULL;
 }
 
+static const char *mag_basic_timeout(cmd_parms *parms, void *mconfig,
+                                     const char *w)
+{
+    struct mag_config *cfg = (struct mag_config *)mconfig;
+    unsigned long int value;
+
+    value = strtoul(w, NULL, 10);
+    if (value >= UINT32_MAX) {
+        cfg->basic_timeout = GSS_C_INDEFINITE;
+        return NULL;
+    }
+    cfg->basic_timeout = value;
+    return NULL;
+}
+
 static void *mag_create_server_config(apr_pool_t *p, server_rec *s)
 {
     struct mag_server_config *scfg;
@@ -1884,6 +1901,8 @@ static const command_rec mag_commands[] = {
                  "Publish GSSAPI Errors in Envionment Variables"),
     AP_INIT_RAW_ARGS("GssapiAcceptorName", mag_acceptor_name, NULL, OR_AUTHCFG,
                      "Name of the acceptor credentials."),
+    AP_INIT_TAKE1("GssapiBasicTicketTimeout", mag_basic_timeout, NULL,
+                  OR_AUTHCFG, "Ticket Validity Timeout with Basic Auth."),
     { NULL }
 };
 
