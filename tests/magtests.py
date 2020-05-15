@@ -77,6 +77,12 @@ def setup_wrappers(base):
     return wenv
 
 
+def apply_venv(env):
+    env['PATH'] = os.environ.get('PATH', '')
+    env['VIRTUAL_ENV'] = os.environ.get('VIRTUAL_ENV', '')
+    return env
+
+
 TESTREALM = "MAG.DEV"
 KDC_DBNAME = 'db.file'
 KDC_STASH = 'stash.file'
@@ -314,7 +320,7 @@ def setup_kdc(testdir, wrapenv):
     with open(kdcconf, 'w+') as f:
         f.write(text)
 
-    kdcenv = {'PATH': '/sbin:/bin:/usr/sbin:/usr/bin',
+    kdcenv = {'PATH': f'/sbin:/bin:/usr/sbin:/usr/bin:{wrapenv["PATH"]}',
               'KRB5_CONFIG': krb5conf,
               'KRB5_KDC_PROFILE': kdcconf,
               'KRB5_TRACE': os.path.join(testdir, 'krbtrace.log')}
@@ -425,7 +431,7 @@ def setup_http(testdir, so_dir, wrapenv):
 
     shutil.copy('tests/401.html', os.path.join(httpdir, 'html'))
 
-    httpenv = {'PATH': '/sbin:/bin:/usr/sbin:/usr/bin',
+    httpenv = {'PATH': f'/sbin:/bin:/usr/sbin:/usr/bin:{wrapenv["PATH"]}',
                'MALLOC_CHECK_': '3',
                'MALLOC_PERTURB_': str(random.randint(0, 32767) % 255 + 1)}
     httpenv.update(wrapenv)
@@ -755,8 +761,7 @@ def faketime_setup(testenv):
 
 
 def http_restart(testdir, so_dir, testenv):
-
-    httpenv = {'PATH': '/sbin:/bin:/usr/sbin:/usr/bin',
+    httpenv = {'PATH': f'/sbin:/bin:/usr/sbin:/usr/bin:{testenv["PATH"]}',
                'MALLOC_CHECK_': '3',
                'MALLOC_PERTURB_': str(random.randint(0, 32767) % 255 + 1)}
     httpenv.update(testenv)
@@ -781,7 +786,7 @@ if __name__ == '__main__':
     logfile = open(os.path.join(testdir, 'tests.log'), 'w')
     errs = 0
     try:
-        wrapenv = setup_wrappers(testdir)
+        wrapenv = apply_venv(setup_wrappers(testdir))
 
         kdcproc, kdcenv = setup_kdc(testdir, wrapenv)
         processes['KDC(%d)' % kdcproc.pid] = kdcproc
@@ -791,10 +796,6 @@ if __name__ == '__main__':
 
         keysenv = setup_keys(testdir, kdcenv)
         testenv = kinit_user(testdir, kdcenv)
-
-        # support virtualenv
-        testenv['PATH'] = os.environ.get('PATH', '')
-        testenv['VIRTUAL_ENV'] = os.environ.get('VIRTUAL_ENV', '')
 
         testenv['DELEGCCACHE'] = os.path.join(testdir, 'httpd',
                                               USR_NAME + '@' + TESTREALM)
@@ -826,8 +827,6 @@ if __name__ == '__main__':
                    'MAG_USER_NAME_2': USR_NAME_2,
                    'MAG_USER_PASSWORD_2': USR_PWD_2}
         testenv.update(kdcenv)
-        testenv['PATH'] = os.environ.get('PATH', '')
-        testenv['VIRTUAL_ENV'] = os.environ.get('VIRTUAL_ENV', '')
 
         errs += test_basic_auth_krb5(testdir, testenv, logfile)
 
