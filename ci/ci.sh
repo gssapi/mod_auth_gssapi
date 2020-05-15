@@ -1,37 +1,29 @@
 #!/bin/bash -ex
 
 if [ -f /etc/debian_version ]; then
-    PYTHON=python3
     export DEBIAN_FRONTEND=noninteractive
 
-    apt-get update
+    apt-get -q update
 
-    apt-get -y install $COMPILER pkg-config flake8 virtualenv \
+    apt-get -yq install $COMPILER pkg-config flake8 virtualenv \
             apache2-bin {apache2,libkrb5,libssl,gss-ntlmssp}-dev \
-            $PYTHON{,-dev,-requests} lib{socket,nss}-wrapper \
-            flex bison krb5-{kdc,admin-server,pkinit} curl
+            python3{,-dev,-requests} lib{socket,nss}-wrapper \
+            flex bison krb5-{kdc,admin-server,pkinit} curl libfaketime
 
-    apt-get -y install $PYTHON-requests-gssapi 2>/dev/null || true
-
-    flake8
-elif [ -f /etc/redhat-release ]; then
-    DY=yum
-    PYTHON=python2
-    if [ -f /etc/fedora-release ]; then
-        DY=dnf
-        PYTHON=python3
-    fi
-
-    $DY -y install $COMPILER $PYTHON-{gssapi,requests} \
-        krb5-{server,workstation,pkinit} curl \
+    apt-get -yq install python3-requests-gssapi 2>/dev/null || true
+elif [ -f /etc/fedora-release ]; then
+    dnf -y install $COMPILER python3-{gssapi,requests{,-gssapi},flake8} \
+        krb5-{server,workstation,pkinit} curl libfaketime \
         {httpd,krb5,openssl,gssntlmssp}-devel {socket,nss}_wrapper \
-        autoconf automake libtool which bison make $PYTHON \
+        autoconf automake libtool which bison make python3 \
         flex mod_session redhat-rpm-config /usr/bin/virtualenv
-
-    $DY -y install python-requests-gssapi 2>/dev/null || true
 else
     echo "Distro not found!"
     false
+fi
+
+if [ x$FLAKE == xyes ]; then
+    flake8
 fi
 
 CFLAGS="-Werror"
@@ -45,7 +37,7 @@ if [ x$COMPILER == xclang ]; then
     cp=$(which clang)
     mv $cp $cp.real
     cat > $cp <<EOF
-#!/usr/bin/env python
+#!/usr/bin/env python3
 import os
 import sys
 argv = [a for a in sys.argv if a != "-fstack-clash-protection" \
@@ -56,7 +48,7 @@ EOF
     chmod +x $cp
 fi
 
-virtualenv --system-site-packages -p $(which $PYTHON) .venv
+virtualenv --system-site-packages -p $(which python3) .venv
 source .venv/bin/activate
 pip install requests{,-gssapi}
 
@@ -64,4 +56,6 @@ scratch=/tmp/build/mod_auth_gssapi-*/_build/sub/testsdir
 
 autoreconf -fiv
 ./configure # overridden by below, but needs to generate Makefile
-make distcheck DISTCHECK_CONFIGURE_FLAGS="CFLAGS=\"$CFLAGS\" CC=$(which $COMPILER)" || (cat $scratch/tests.log $scratch/httpd/logs/error_log; exit -1)
+DCF="CFLAGS=\"$CFLAGS\" CC=$(which $COMPILER)"
+make distcheck DISTCHECK_CONFIGURE_FLAGS="$DCF" ||
+    (cat $scratch/tests.log $scratch/httpd/logs/error_log; exit -1)
