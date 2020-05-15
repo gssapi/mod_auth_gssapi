@@ -1,0 +1,54 @@
+{
+    "name": "CI",
+    "on": {
+        "pull_request": null,
+        "push": {
+            "branches-ignore": "master",
+            "tags-ignore": "*",
+        },
+    },
+    "jobs": {
+        "linux": {
+            "runs-on": "ubuntu-latest",
+            "strategy": {
+                "fail-fast": false,
+                "matrix": {
+                    "name": ["fedora-gcc", "fedora-clang", "debian-clang"],
+                    "include": [
+                        {
+                            "name": "fedora-gcc",
+                            "distro": "fedora:latest",
+                            "compiler": "gcc",
+                            "flake": "yes",
+                        },
+                        {
+                            "name": "fedora-clang",
+                            "distro": "fedora:latest",
+                            "compiler": "clang",
+                        },
+                        {
+                            "name": "debian-clang",
+                            "distro": "debian:sid",
+                            "compiler": "clang",
+                        },
+                    ],
+                },
+            },
+            "steps": [
+                {
+                    "name": "Check out code",
+                    "uses": "actions/checkout@v2",
+                },
+                {
+                    "name": "Build and test",
+                    "run": "./ci/run_dockerized.sh",
+                    "env": {
+                        "DISTRO": "${{ matrix.distro }}",
+                        "COMPILER": "${{ matrix.compiler }}",
+                        "FLAKE": "${{ matrix.flake }}",
+                    },
+                },
+            ],
+        },
+    },
+}
