@@ -735,9 +735,16 @@ def test_gss_localname(testdir, testenv, logfile):
 
 
 def faketime_setup(testenv):
-    libfaketime = '/usr/lib64/faketime/libfaketime.so.1'
-    # optional faketime
-    if not os.path.isfile(libfaketime):
+    # Wanted: an architecture- and distro-agnostic way to do this.
+    # libfaketime is installed in a place where ld.so won't pick it up by
+    # default, so...
+    paths = ['/usr/lib64/faketime/libfaketime.so.1',
+             '/usr/lib/x86_64-linux-gnu/faketime/libfaketime.so.1']
+    libfaketime = None
+    for p in paths:
+        if os.path.isfile(p):
+            libfaketime = p
+    if not libfaketime:
         raise NotImplementedError
 
     # spedup x100
