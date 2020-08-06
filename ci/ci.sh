@@ -15,7 +15,7 @@ elif [ -f /etc/fedora-release ]; then
     dnf -y install $COMPILER python3-{gssapi,requests{,-gssapi},flake8} \
         krb5-{server,workstation,pkinit} curl libfaketime \
         {httpd,krb5,openssl,gssntlmssp}-devel {socket,nss}_wrapper \
-        autoconf automake libtool which bison make python3 \
+        autoconf automake libtool which bison make python3 python3-devel \
         flex mod_session redhat-rpm-config /usr/bin/virtualenv
 else
     echo "Distro not found!"
