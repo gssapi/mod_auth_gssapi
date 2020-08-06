@@ -320,11 +320,13 @@ def setup_kdc(testdir, wrapenv):
     with open(kdcconf, 'w+') as f:
         f.write(text)
 
-    kdcenv = {'PATH': f'/sbin:/bin:/usr/sbin:/usr/bin:{wrapenv["PATH"]}',
-              'KRB5_CONFIG': krb5conf,
-              'KRB5_KDC_PROFILE': kdcconf,
-              'KRB5_TRACE': os.path.join(testdir, 'krbtrace.log')}
-    kdcenv.update(wrapenv)
+    kdcenv = wrapenv.copy()
+    kdcenv.update({
+        'PATH': f'/sbin:/bin:/usr/sbin:/usr/bin:{wrapenv["PATH"]}',
+        'KRB5_CONFIG': krb5conf,
+        'KRB5_KDC_PROFILE': kdcconf,
+        'KRB5_TRACE': os.path.join(testdir, 'krbtrace.log'),
+    })
 
     logfile = open(testlog, 'a')
     ksetup = subprocess.Popen(["kdb5_util", "create", "-W", "-s",
@@ -393,8 +395,10 @@ def setup_keys(tesdir, env):
     cmd = "addprinc -nokey -e %s %s" % (KEY_TYPE, USR_NAME_3)
     kadmin_local(cmd, env, logfile)
 
-    keys_env = {"KRB5_KTNAME": svc_keytab, }
-    keys_env.update(env)
+    keys_env = env.copy()
+    keys_env.update({
+        "KRB5_KTNAME": svc_keytab,
+    })
     return keys_env
 
 
@@ -431,10 +435,12 @@ def setup_http(testdir, so_dir, wrapenv):
 
     shutil.copy('tests/401.html', os.path.join(httpdir, 'html'))
 
-    httpenv = {'PATH': f'/sbin:/bin:/usr/sbin:/usr/bin:{wrapenv["PATH"]}',
-               'MALLOC_CHECK_': '3',
-               'MALLOC_PERTURB_': str(random.randint(0, 32767) % 255 + 1)}
-    httpenv.update(wrapenv)
+    httpenv = wrapenv.copy()
+    httpenv.update({
+        'PATH': f'/sbin:/bin:/usr/sbin:/usr/bin:{wrapenv["PATH"]}',
+        'MALLOC_CHECK_': '3',
+        'MALLOC_PERTURB_': str(random.randint(0, 32767) % 255 + 1),
+    })
 
     httpd = "httpd" if distro == "Fedora" else "apache2"
     httpproc = subprocess.Popen([httpd, '-DFOREGROUND', '-f', config],
@@ -445,8 +451,10 @@ def setup_http(testdir, so_dir, wrapenv):
 def kinit_user(testdir, kdcenv):
     testlog = os.path.join(testdir, 'kinit.log')
     ccache = os.path.join(testdir, 'k5ccache')
-    testenv = {'KRB5CCNAME': ccache}
-    testenv.update(kdcenv)
+    testenv = kdcenv.copy()
+    testenv.update({
+        'KRB5CCNAME': ccache,
+    })
 
     with (open(testlog, 'a')) as logfile:
         kinit = subprocess.Popen(["kinit", USR_NAME],
@@ -467,8 +475,10 @@ def kinit_certuser(testdir, kdcenv):
     pkinit_user_cert = os.path.join(testdir, PKINIT_USER_CERT)
     pkinit_key = os.path.join(testdir, PKINIT_KEY)
     ident = "X509_user_identity=FILE:" + pkinit_user_cert + "," + pkinit_key
-    testenv = {'KRB5CCNAME': ccache}
-    testenv.update(kdcenv)
+    testenv = kdcenv.copy()
+    testenv.update({
+        'KRB5CCNAME': ccache,
+    })
     with (open(testlog, 'a')) as logfile:
         logfile.write('PKINIT for maguser3\n')
         kinit = subprocess.Popen(["kinit", USR_NAME_3, "-X", ident],
@@ -754,17 +764,21 @@ def faketime_setup(testenv):
         raise NotImplementedError
 
     # spedup x100
-    fakeenv = {'FAKETIME': '+0 x100'}
-    fakeenv.update(testenv)
-    fakeenv['LD_PRELOAD'] = ' '.join((testenv['LD_PRELOAD'], libfaketime))
+    fakeenv = testenv.copy()
+    fakeenv.update({
+        'FAKETIME': '+0 x100',
+        'LD_PRELOAD': ' '.join((testenv['LD_PRELOAD'], libfaketime)),
+    })
     return fakeenv
 
 
 def http_restart(testdir, so_dir, testenv):
-    httpenv = {'PATH': f'/sbin:/bin:/usr/sbin:/usr/bin:{testenv["PATH"]}',
-               'MALLOC_CHECK_': '3',
-               'MALLOC_PERTURB_': str(random.randint(0, 32767) % 255 + 1)}
-    httpenv.update(testenv)
+    httpenv = testenv.copy()
+    httpenv.update({
+        'PATH': f'/sbin:/bin:/usr/sbin:/usr/bin:{testenv["PATH"]}',
+        'MALLOC_CHECK_': '3',
+        'MALLOC_PERTURB_': str(random.randint(0, 32767) % 255 + 1),
+    })
 
     httpd = "httpd" if os.path.exists("/etc/httpd/modules") else "apache2"
     config = os.path.join(testdir, 'httpd', 'httpd.conf')
@@ -844,11 +858,13 @@ if __name__ == '__main__':
             sys.stderr.write("krb5 PKINIT module not found, skipping name "
                              "attribute tests\n")
 
-        testenv = {'MAG_USER_NAME': USR_NAME,
-                   'MAG_USER_PASSWORD': USR_PWD,
-                   'MAG_USER_NAME_2': USR_NAME_2,
-                   'MAG_USER_PASSWORD_2': USR_PWD_2}
-        testenv.update(kdcenv)
+        testenv = kdcenv.copy()
+        testenv.update({
+            'MAG_USER_NAME': USR_NAME,
+            'MAG_USER_PASSWORD': USR_PWD,
+            'MAG_USER_NAME_2': USR_NAME_2,
+            'MAG_USER_PASSWORD_2': USR_PWD_2,
+        })
 
         errs += test_basic_auth_krb5(testdir, testenv, logfile)
 
@@ -859,9 +875,11 @@ if __name__ == '__main__':
         # After this point we need to speed up httpd to test creds timeout
         try:
             fakeenv = faketime_setup(kdcenv)
-            timeenv = {'TIMEOUT_USER': USR_NAME_4,
-                       'MAG_USER_PASSWORD': USR_PWD}
-            timeenv.update(fakeenv)
+            timeenv = fakeenv.copy()
+            timeenv.update({
+                'TIMEOUT_USER': USR_NAME_4,
+                'MAG_USER_PASSWORD': USR_PWD,
+            })
             curporc = httpproc
             pid = processes['HTTPD(%d)' % httpproc.pid].pid
             os.killpg(pid, signal.SIGTERM)
