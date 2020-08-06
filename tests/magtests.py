@@ -800,8 +800,11 @@ if __name__ == '__main__':
 
     processes = dict()
     logfile = open(os.path.join(testdir, 'tests.log'), 'w')
-    errs = 0
+    # '-1' indicates setup phase
+    errs = -1
+
     try:
+        # prepare environment for tests
         wrapenv = apply_venv(setup_wrappers(testdir))
 
         kdcproc, kdcenv = setup_kdc(testdir, wrapenv)
@@ -815,6 +818,9 @@ if __name__ == '__main__':
 
         testenv['DELEGCCACHE'] = os.path.join(testdir, 'httpd',
                                               USR_NAME + '@' + TESTREALM)
+        # making testing
+        errs = 0
+
         errs += test_spnego_auth(testdir, testenv, logfile)
 
         testenv['MAG_GSS_NAME'] = USR_NAME + '@' + TESTREALM
