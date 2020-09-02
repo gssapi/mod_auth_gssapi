@@ -410,6 +410,7 @@ def setup_http(testdir, so_dir, wrapenv):
     os.mkdir(os.path.join(httpdir, 'conf.d'))
     os.mkdir(os.path.join(httpdir, 'html'))
     os.mkdir(os.path.join(httpdir, 'logs'))
+    httpdstdlog = os.path.join(testdir, 'httpd.stdlog')
 
     distro = "Fedora"
     moddir = "/etc/httpd/modules"
@@ -443,7 +444,9 @@ def setup_http(testdir, so_dir, wrapenv):
     })
 
     httpd = "httpd" if distro == "Fedora" else "apache2"
+    log = open(httpdstdlog, 'a')
     httpproc = subprocess.Popen([httpd, '-DFOREGROUND', '-f', config],
+                                stdout=log, stderr=log,
                                 env=httpenv, preexec_fn=os.setsid)
     return httpproc
 
@@ -782,7 +785,9 @@ def http_restart(testdir, so_dir, testenv):
 
     httpd = "httpd" if os.path.exists("/etc/httpd/modules") else "apache2"
     config = os.path.join(testdir, 'httpd', 'httpd.conf')
+    log = open(os.path.join(testdir, 'httpd.stdlog'), 'a')
     httpproc = subprocess.Popen([httpd, '-DFOREGROUND', '-f', config],
+                                stdout=log, stderr=log,
                                 env=httpenv, preexec_fn=os.setsid)
     return httpproc
 
@@ -800,6 +805,22 @@ def test_mech_name(testdir, testenv, logfile):
         sys.stderr.write('MECH-NAME: FAILED\n')
         return 1
     sys.stderr.write('MECH-NAME: SUCCESS\n')
+    return 0
+
+
+def test_file_check(testdir, testenv, logfile):
+    basicdir = os.path.join(testdir, 'httpd', 'html', 'keytab_file_check')
+    os.mkdir(basicdir)
+    shutil.copy('tests/index.html', basicdir)
+
+    filec = subprocess.Popen(["tests/t_file_check.py"],
+                             stdout=logfile, stderr=logfile,
+                             env=testenv, preexec_fn=os.setsid)
+    filec.wait()
+    if filec.returncode == 0:
+        sys.stderr.write('FILE-CHECK: FAILED\n')
+        return 1
+    sys.stderr.write('FILE-CHECK: SUCCESS\n')
     return 0
 
 
@@ -871,6 +892,8 @@ if __name__ == '__main__':
         errs += test_no_negotiate(testdir, testenv, logfile)
 
         errs += test_mech_name(testdir, testenv, logfile)
+
+        errs += test_file_check(testdir, testenv, logfile)
 
         # After this point we need to speed up httpd to test creds timeout
         try:
