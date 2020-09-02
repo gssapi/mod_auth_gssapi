@@ -1532,6 +1532,23 @@ static const char *mag_cred_store(cmd_parms *parms, void *mconfig,
     }
     cfg->cred_store->count++;
 
+    /* check for files that we know should be present, so admins get
+     * some rope to figure out issues when they cannot be accessed */
+    if (strcmp(key, "keytab") == 0 ||
+        strcmp(key, "client_keytab") == 0) {
+        apr_status_t rc;
+        apr_file_t *file;
+        rc = apr_file_open(&file, value, APR_FOPEN_READ, 0, parms->pool);
+        if (rc != APR_SUCCESS) {
+            char err[256];
+            apr_strerror(rc, err, sizeof(err));
+            ap_log_error(APLOG_MARK, APLOG_ERR, 0, parms->server,
+                         "Cannot open %s file %s: %s", key, value, err);
+        } else {
+            apr_file_close(file);
+        }
+    }
+
     elements[count].key = key;
     elements[count].value = value;
 
