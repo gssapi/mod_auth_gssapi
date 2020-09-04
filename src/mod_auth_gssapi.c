@@ -659,6 +659,54 @@ done:
     return ret;
 }
 
+#define OPTION_WARNING "Warning: %s is set but %s = %s is missing!"
+
+void mag_verify_config(request_rec *req, struct mag_config *cfg)
+{
+    /* we check only once */
+    if (cfg->verified) return;
+
+    /* Check if cred store config is consistent with use_s4u2proxy.
+     * Although not strictly required it is generally adivsable to
+     * set keytab, client_keytab, and ccache in the cred_store when
+     * use_s4u2proxy is set, this is to avoid easy mistakes that are
+     * very difficult to diagnose */
+    if (cfg->use_s4u2proxy) {
+        bool has_keytab = false;
+        bool has_client_keytab = false;
+        bool has_ccache = false;
+
+        for (int i = 0; i < cfg->cred_store->count; i++) {
+            const char *key = cfg->cred_store->elements[i].key;
+            if (strcmp(key, "keytab") == 0) {
+                has_keytab = true;
+            } else if (strcmp(key, "client_keytab") == 0) {
+                has_client_keytab = true;
+            } else if (strcmp(key, "ccache") == 0) {
+                has_ccache = true;
+            }
+        }
+
+        if (!has_keytab) {
+            ap_log_rerror(APLOG_MARK, APLOG_INFO, 0, req,
+                          OPTION_WARNING, "GssapiUseS4U2Proxy",
+                          "GssapiCredStore", "keytab");
+        }
+        if (!has_client_keytab) {
+            ap_log_rerror(APLOG_MARK, APLOG_INFO, 0, req,
+                          OPTION_WARNING, "GssapiUseS4U2Proxy",
+                          "GssapiCredStore", "client_keytab");
+        }
+        if (!has_ccache) {
+            ap_log_rerror(APLOG_MARK, APLOG_INFO, 0, req,
+                          OPTION_WARNING, "GssapiUseS4U2Proxy",
+                          "GssapiCredStore", "ccache");
+        }
+    }
+
+    cfg->verified = true;
+}
+
 struct mag_req_cfg *mag_init_cfg(request_rec *req)
 {
     struct mag_server_config *scfg;
@@ -667,6 +715,7 @@ struct mag_req_cfg *mag_init_cfg(request_rec *req)
     req_cfg->req = req;
     req_cfg->cfg = ap_get_module_config(req->per_dir_config,
                                         &auth_gssapi_module);
+    mag_verify_config(req, req_cfg->cfg);
 
     scfg = ap_get_module_config(req->server->module_config,
                                 &auth_gssapi_module);
