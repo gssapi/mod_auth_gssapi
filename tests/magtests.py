@@ -322,7 +322,7 @@ def setup_kdc(testdir, wrapenv):
 
     kdcenv = wrapenv.copy()
     kdcenv.update({
-        'PATH': f'/sbin:/bin:/usr/sbin:/usr/bin:{wrapenv["PATH"]}',
+        'PATH': f'{wrapenv["PATH"]}:/sbin:/bin:/usr/sbin:/usr/bin',
         'KRB5_CONFIG': krb5conf,
         'KRB5_KDC_PROFILE': kdcconf,
         'KRB5_TRACE': os.path.join(testdir, 'krbtrace.log'),
