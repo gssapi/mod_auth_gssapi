@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # Copyright (C) 2015 - mod_auth_gssapi contributors, see COPYING for license.
 
 import argparse

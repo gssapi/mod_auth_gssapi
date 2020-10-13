@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # Works with both python2 and python3; please preserve this property
 
 # Copyright (C) 2016 mod_auth_gssapi contributors - See COPYING for (C) terms
