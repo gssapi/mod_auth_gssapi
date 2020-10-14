@@ -194,6 +194,9 @@ static bool mag_conn_is_https(conn_rec *c)
     return false;
 }
 
+static char *get_ccache_name(request_rec *req, char *dir, const char *name,
+                             bool use_unique, apr_pool_t *pool);
+
 static bool mag_acquire_creds(request_rec *req,
                               struct mag_config *cfg,
                               gss_OID_set desired_mechs,
@@ -226,7 +229,52 @@ static bool mag_acquire_creds(request_rec *req,
     }
 
 #ifdef HAVE_CRED_STORE
-    gss_const_key_value_set_t store = cfg->cred_store;
+    gss_const_key_value_set_t store = NULL;
+
+    /* When using multiple names, we need to use individual separate ccaches
+     * for each principal or gss_acquire_cred() on the default ccache will
+     * fail when names don't match.  This is needed only for the s4u2proxy
+     * case, where we try to acquire proxy credentials.  The lucky thing is
+     * that in this case we require the use of a delegated creedntials
+     * directory, so we just use this directory to also hold permanent ccaches
+     * for individual acceptor names. */
+    if (cfg->acceptor_name_from_req && cfg->use_s4u2proxy &&
+        cfg->deleg_ccache_dir) {
+
+        gss_key_value_set_desc *s;
+        bool add = true;
+        char *ccname;
+        char *special_name;
+
+        special_name = apr_psprintf(req->pool, "acceptor_%s", req->hostname);
+        ccname = get_ccache_name(req, cfg->deleg_ccache_dir, special_name,
+                                 false, req->pool);
+
+        s = apr_pcalloc(req->pool, sizeof(gss_key_value_set_desc));
+        s->count = cfg->cred_store->count;
+        s->elements = apr_pcalloc(req->pool,
+                                  (s->count + 1) *
+                                  sizeof(gss_key_value_element_desc));
+        for (size_t i = 0; i < s->count; i++) {
+            gss_key_value_element_desc *el = &cfg->cred_store->elements[i];
+            s->elements[i].key = el->key;
+            if (strcmp(el->key, "ccache") == 0) {
+                s->elements[i].value = ccname;
+                add = false;
+            } else {
+                s->elements[i].value = el->value;
+            }
+        }
+        if (add) {
+            s->elements[s->count].key = "ccache";
+            s->elements[s->count].value = ccname;
+            s->count++;
+        }
+
+        store = s;
+    } else {
+        store = cfg->cred_store;
+    }
 
     maj = gss_acquire_cred_from(&min, acceptor_name, GSS_C_INDEFINITE,
                                 desired_mechs, cred_usage, store, creds,
@@ -287,8 +335,8 @@ static char *escape(apr_pool_t *pool, const char *name,
     return escaped;
 }
 
-static char *get_ccache_name(request_rec *req, char *dir, const char *gss_name,
-                             bool use_unique, struct mag_conn *mc)
+static char *get_ccache_name(request_rec *req, char *dir, const char *name,
+                             bool use_unique, apr_pool_t *pool)
 {
     char *ccname, *escaped;
     int ccachefd;
@@ -297,15 +345,15 @@ static char *get_ccache_name(request_rec *req, char *dir, const char *gss_name,
     /* We need to escape away '/', we can't have path separators in
      * a ccache file name */
     /* first double escape the esacping char (~) if any */
-    escaped = escape(req->pool, gss_name, '~', "~~");
+    escaped = escape(req->pool, name, '~', "~~");
     /* then escape away the separator (/) if any */
     escaped = escape(req->pool, escaped, '/', "~");
 
     if (use_unique == false) {
-        return apr_psprintf(mc->pool, "%s/%s", dir, escaped);
+        return apr_psprintf(pool, "%s/%s", dir, escaped);
     }
 
-    ccname = apr_psprintf(mc->pool, "%s/%s-XXXXXX", dir, escaped);
+    ccname = apr_psprintf(pool, "%s/%s-XXXXXX", dir, escaped);
 
     umask_save = umask(0177);
     ccachefd = mkstemp(ccname);
@@ -1297,7 +1345,7 @@ static int mag_complete(struct mag_req_cfg *req_cfg, struct mag_conn *mc,
                       "requester: %s", mc->gss_name);
 
         ccache_path = get_ccache_name(req, cfg->deleg_ccache_dir, mc->gss_name,
-                                      cfg->deleg_ccache_unique, mc);
+                                      cfg->deleg_ccache_unique, mc->pool);
         if (ccache_path == NULL) {
             goto done;
         }
