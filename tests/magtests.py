@@ -691,26 +691,32 @@ def test_no_negotiate(testdir, testenv, logfile):
 
 
 def test_hostname_acceptor(testdir, testenv, logfile):
-    hdir = os.path.join(testdir, 'httpd', 'html', 'hostname_acceptor')
+    plain_test_name = 'hostname_acceptor'
+    hdir = os.path.join(testdir, 'httpd', 'html', plain_test_name)
     os.mkdir(hdir)
     shutil.copy('tests/index.html', hdir)
 
+    proxy_test_name = 'hostname_proxy'
+    hdir = os.path.join(testdir, 'httpd', 'html', proxy_test_name)
+    os.mkdir(hdir)
+    shutil.copy('tests/index.html', hdir)
+    ddir = os.path.join(testdir, 'httpd', 'delegccachedir')
+    os.mkdir(ddir)
+
     failed = False
-    for (name, fail) in [(WRAP_HOSTNAME, False),
-                         (WRAP_ALIASNAME, False),
-                         (WRAP_FAILNAME, True)]:
-        res = subprocess.Popen(["tests/t_hostname_acceptor.py", name],
-                               stdout=logfile, stderr=logfile,
-                               env=testenv, preexec_fn=os.setsid)
-        res.wait()
-        if fail:
-            if res.returncode == 0:
+    for test_name in [plain_test_name, proxy_test_name]:
+        for (name, fail) in [(WRAP_HOSTNAME, False),
+                             (WRAP_ALIASNAME, False),
+                             (WRAP_FAILNAME, True)]:
+            res = subprocess.Popen(["tests/t_hostname_acceptor.py",
+                                    name, test_name],
+                                   stdout=logfile, stderr=logfile,
+                                   env=testenv, preexec_fn=os.setsid)
+            res.wait()
+            if (fail and res.returncode == 0) or \
+               (not fail and res.returncode != 0):
                 failed = True
-        else:
-            if res.returncode != 0:
-                failed = True
-        if failed:
-            break
+                break
 
     if failed:
         sys.stderr.write('HOSTNAME ACCEPTOR: FAILED\n')
