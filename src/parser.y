@@ -40,11 +40,10 @@ static char *b64_enc(const char *val, size_t len);
 %token EQUAL
 %token EQUALBIN
 %token AST
-%token STRING
-%token INT
 
-%type <sval> STRING
-%type <ival> INT rule rule_start requiredkv
+%token <sval> STRING
+%token <ival> INT
+%type <ival> rule rule_start requiredkv
 
 %parse-param {const char **keys} {const char **vals} {int *status}
 
