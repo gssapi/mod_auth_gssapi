@@ -83,6 +83,7 @@ struct mag_config {
     gid_t deleg_ccache_gid;
     gss_key_value_set_desc *cred_store;
     bool deleg_ccache_unique;
+    bool deleg_ccache_random;
     int s4u2self;
     char *ccname_envvar;
 #endif

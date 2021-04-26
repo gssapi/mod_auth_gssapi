@@ -195,7 +195,7 @@ static bool mag_conn_is_https(conn_rec *c)
 }
 
 static char *get_ccache_name(request_rec *req, char *dir, const char *name,
-                             bool use_unique, apr_pool_t *pool);
+                             bool use_unique, bool use_random, apr_pool_t *pool);
 
 static bool mag_acquire_creds(request_rec *req,
                               struct mag_config *cfg,
@@ -248,7 +248,7 @@ static bool mag_acquire_creds(request_rec *req,
 
         special_name = apr_psprintf(req->pool, "acceptor_%s", req->hostname);
         ccname = get_ccache_name(req, cfg->deleg_ccache_dir, special_name,
-                                 false, req->pool);
+                                 false, false, req->pool);
 
         s = apr_pcalloc(req->pool, sizeof(gss_key_value_set_desc));
         s->count = cfg->cred_store->count;
@@ -335,8 +335,26 @@ static char *escape(apr_pool_t *pool, const char *name,
     return escaped;
 }
 
+static char *get_random_string(apr_size_t length, apr_pool_t *pool)
+{
+    const char *chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_.";
+    /* fill a buffer with random data */
+    unsigned char *data = apr_palloc(pool, length);
+    apr_generate_random_bytes(data, length);
+
+    /* convert into filename-safe characters */
+    char *output = apr_palloc(pool, length);
+    apr_size_t i;
+    for (i = 0; i < length; i++) {
+        output[i] = chars[data[i] % 64];
+    }
+
+    return output;
+}
+
+
 static char *get_ccache_name(request_rec *req, char *dir, const char *name,
-                             bool use_unique, apr_pool_t *pool)
+                             bool use_unique, bool use_random, apr_pool_t *pool)
 {
     char *ccname, *escaped;
     int ccachefd;
@@ -353,7 +371,12 @@ static char *get_ccache_name(request_rec *req, char *dir, const char *name,
         return apr_psprintf(pool, "%s/%s", dir, escaped);
     }
 
-    ccname = apr_psprintf(pool, "%s/%s-XXXXXX", dir, escaped);
+    if (use_random) {
+        const char *rand_string = get_random_string(16, req->pool);
+        ccname = apr_psprintf(pool, "%s/%s-%s-XXXXXX", dir, escaped, rand_string);
+    } else {
+        ccname = apr_psprintf(pool, "%s/%s-XXXXXX", dir, escaped);
+    }
 
     umask_save = umask(0177);
     ccachefd = mkstemp(ccname);
@@ -1345,7 +1368,8 @@ static int mag_complete(struct mag_req_cfg *req_cfg, struct mag_conn *mc,
                       "requester: %s", mc->gss_name);
 
         ccache_path = get_ccache_name(req, cfg->deleg_ccache_dir, mc->gss_name,
-                                      cfg->deleg_ccache_unique, mc->pool);
+                                      cfg->deleg_ccache_unique,
+                                      cfg->deleg_ccache_random, mc->pool);
         if (ccache_path == NULL) {
             goto done;
         }
@@ -1474,6 +1498,14 @@ static const char *mag_deleg_ccache_unique(cmd_parms *parms, void *mconfig,
 {
     struct mag_config *cfg = (struct mag_config *)mconfig;
     cfg->deleg_ccache_unique = on ? true : false;
+    return NULL;
+}
+
+static const char *mag_deleg_ccache_random(cmd_parms *parms, void *mconfig,
+                                           int on)
+{
+    struct mag_config *cfg = (struct mag_config *)mconfig;
+    cfg->deleg_ccache_random = on ? true : false;
     return NULL;
 }
 
@@ -1997,6 +2029,8 @@ static const command_rec mag_commands[] = {
                     OR_AUTHCFG, "Environment variable to receive ccache name"),
     AP_INIT_FLAG("GssapiDelegCcacheUnique", mag_deleg_ccache_unique, NULL,
                  OR_AUTHCFG, "Use unique ccaches for delgation"),
+    AP_INIT_FLAG("GssapiDelegCcacheRandom", mag_deleg_ccache_random, NULL,
+                 OR_AUTHCFG, "Add a random string to the ccache name"),
     AP_INIT_FLAG("GssapiImpersonate", ap_set_flag_slot,
           (void *)APR_OFFSETOF(struct mag_config, s4u2self), OR_AUTHCFG,
                "Do impersonation call (S4U2Self) "

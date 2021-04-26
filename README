@@ -103,6 +103,7 @@ Configuration Directives
 [GssapiDelegCcacheDir](#gssapidelegccachedir)<br>
 [GssapiDelegCcacheEnvVar](#gssapidelegccacheenvvar)<br>
 [GssapiDelegCcachePerms](#gssapidelegccacheperms)<br>
+[GssapiDelegCcacheRandom](#gssapidelegccacherandom)<br>
 [GssapiDelegCcacheUnique](#gssapidelegccacheunique)<br>
 [GssapiImpersonate](#gssapiimpersonate)<br>
 [GssapiLocalName](#gssapilocalname)<br>
@@ -262,6 +263,17 @@ file.
 
 - **Enable with:** GssapiDelegCcacheUnique On
 - **Default:** GssapiDelegCcacheUnique Off
+
+
+# GssapiDelegCcacheRandom
+
+Adds a 16-character random string to the filename of the delegated ccache.
+This option requires GssapiDelegCcacheUnique to be enabled, and could be used
+to help protect saved tickets if the directory permissions are set
+appropriately.
+
+- **Enable with:** GssapiDelegCcacheRandom On
+- **Default:** GssapiDelegCcacheRandom Off
 
 
 ### GssapiDelegCcacheEnvVar
