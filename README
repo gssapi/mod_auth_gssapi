@@ -267,10 +267,13 @@ file.
 
 # GssapiDelegCcacheRandom
 
-Adds a 16-character random string to the filename of the delegated ccache.
-This option requires GssapiDelegCcacheUnique to be enabled, and could be used
-to help protect saved tickets if the directory permissions are set
-appropriately.
+Inserts a 96-bit-entropy random string to the filename of the delegated
+ccache. This option requires GssapiDelegCcacheUnique to be enabled, and
+could be used to help protect saved tickets if the directory permissions
+are set appropriately such that users only have traversal (x) but not
+read (r) permissions to discover these filenames, so a user requires
+prior knowledge of fhe filename to access the credential cache (in effect,
+the filename also acts as an access password).
 
 - **Enable with:** GssapiDelegCcacheRandom On
 - **Default:** GssapiDelegCcacheRandom Off

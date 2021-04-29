@@ -343,11 +343,12 @@ static char *get_random_string(apr_size_t length, apr_pool_t *pool)
     apr_generate_random_bytes(data, length);
 
     /* convert into filename-safe characters */
-    char *output = apr_palloc(pool, length);
+    char *output = apr_palloc(pool, length+1);
     apr_size_t i;
     for (i = 0; i < length; i++) {
         output[i] = chars[data[i] % 64];
     }
+    output[length] = '\0';
 
     return output;
 }
