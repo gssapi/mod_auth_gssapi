@@ -256,27 +256,20 @@ Enables using unique ccache names for delegation.  ccache files will be placed
 in GssapiDelegCcacheDir and named using the principal and a six-digit unique
 suffix.
 
+If set to "secure", this option will insert a 96-bit-entropy random string to
+the filename of the delegated ccache. This could be used to help protect saved
+tickets if the directory permissions are set appropriately such that users
+only have traversal (x) but not read (r) permissions to discover these
+filenames, so a user requires prior knowledge of fhe filename to access the
+credential cache (in effect, the filename also acts as an access password).
+
 **Note:** Consuming application must delete the ccache otherwise it will
 litter the filesystem if sessions are used.  An example sweeper can be found
 in the contrib directory.  If using with gssproxy, see note at the top of that
 file.
 
-- **Enable with:** GssapiDelegCcacheUnique On
+- **Options:** GssapiDelegCcacheUnique Off|On|Secure
 - **Default:** GssapiDelegCcacheUnique Off
-
-
-# GssapiDelegCcacheRandom
-
-Inserts a 96-bit-entropy random string to the filename of the delegated
-ccache. This option requires GssapiDelegCcacheUnique to be enabled, and
-could be used to help protect saved tickets if the directory permissions
-are set appropriately such that users only have traversal (x) but not
-read (r) permissions to discover these filenames, so a user requires
-prior knowledge of fhe filename to access the credential cache (in effect,
-the filename also acts as an access password).
-
-- **Enable with:** GssapiDelegCcacheRandom On
-- **Default:** GssapiDelegCcacheRandom Off
 
 
 ### GssapiDelegCcacheEnvVar

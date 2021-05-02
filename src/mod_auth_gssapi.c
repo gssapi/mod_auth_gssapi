@@ -1495,18 +1495,25 @@ static const char *mag_use_s4u2p(cmd_parms *parms, void *mconfig, int on)
 }
 
 static const char *mag_deleg_ccache_unique(cmd_parms *parms, void *mconfig,
-                                           int on)
+                                           const char *arg)
 {
     struct mag_config *cfg = (struct mag_config *)mconfig;
-    cfg->deleg_ccache_unique = on ? true : false;
-    return NULL;
-}
 
-static const char *mag_deleg_ccache_random(cmd_parms *parms, void *mconfig,
-                                           int on)
-{
-    struct mag_config *cfg = (struct mag_config *)mconfig;
-    cfg->deleg_ccache_random = on ? true : false;
+    if (ap_cstr_casecmp(arg, "on") == 0) {
+        cfg->deleg_ccache_unique = true;
+        cfg->deleg_ccache_random = false;
+    }
+    else if (ap_cstr_casecmp(arg, "off") == 0) {
+        cfg->deleg_ccache_unique = false;
+        cfg->deleg_ccache_random = false;
+    }
+    else if (ap_cstr_casecmp(arg, "secure") == 0) {
+        cfg->deleg_ccache_unique = true;
+        cfg->deleg_ccache_random = true;
+    }
+    else {
+        return "GssapiDelegCcacheUnique must be set to on, off or secure";
+    }
     return NULL;
 }
 
@@ -2028,10 +2035,8 @@ static const command_rec mag_commands[] = {
     AP_INIT_TAKE1("GssapiDelegCcacheEnvVar", ap_set_string_slot,
                     (void *)APR_OFFSETOF(struct mag_config, ccname_envvar),
                     OR_AUTHCFG, "Environment variable to receive ccache name"),
-    AP_INIT_FLAG("GssapiDelegCcacheUnique", mag_deleg_ccache_unique, NULL,
+    AP_INIT_TAKE1("GssapiDelegCcacheUnique", mag_deleg_ccache_unique, NULL,
                  OR_AUTHCFG, "Use unique ccaches for delgation"),
-    AP_INIT_FLAG("GssapiDelegCcacheRandom", mag_deleg_ccache_random, NULL,
-                 OR_AUTHCFG, "Add a random string to the ccache name"),
     AP_INIT_FLAG("GssapiImpersonate", ap_set_flag_slot,
           (void *)APR_OFFSETOF(struct mag_config, s4u2self), OR_AUTHCFG,
                "Do impersonation call (S4U2Self) "
