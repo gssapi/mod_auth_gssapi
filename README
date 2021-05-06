@@ -103,7 +103,6 @@ Configuration Directives
 [GssapiDelegCcacheDir](#gssapidelegccachedir)<br>
 [GssapiDelegCcacheEnvVar](#gssapidelegccacheenvvar)<br>
 [GssapiDelegCcachePerms](#gssapidelegccacheperms)<br>
-[GssapiDelegCcacheRandom](#gssapidelegccacherandom)<br>
 [GssapiDelegCcacheUnique](#gssapidelegccacheunique)<br>
 [GssapiImpersonate](#gssapiimpersonate)<br>
 [GssapiLocalName](#gssapilocalname)<br>
