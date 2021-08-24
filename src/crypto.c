@@ -262,7 +262,7 @@ apr_status_t UNSEAL_BUFFER(apr_pool_t *p, struct seal_key *skey,
 
     totlen += outlen;
     outlen = plain->length - totlen;
-    ret = EVP_DecryptFinal_ex(ctx, plain->value, &outlen);
+    ret = EVP_DecryptFinal_ex(ctx, plain->value + totlen, &outlen);
     if (ret == 0) goto done;
 
     totlen += outlen;
