@@ -16,7 +16,7 @@ elif [ -f /etc/fedora-release ]; then
         krb5-{server,workstation,pkinit} curl libfaketime \
         {httpd,krb5,openssl,gssntlmssp}-devel {socket,nss}_wrapper \
         autoconf automake libtool which bison make python3 python3-devel \
-        flex mod_session redhat-rpm-config /usr/bin/virtualenv
+        flex mod_session redhat-rpm-config /usr/bin/virtualenv openssl
 else
     echo "Distro not found!"
     false
