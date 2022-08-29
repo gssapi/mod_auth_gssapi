@@ -26,7 +26,9 @@ if [ x$FLAKE == xyes ]; then
     flake8
 fi
 
-CFLAGS="-Werror"
+#Disable -Werror until we can replace the HMAC stuff which gives warnings
+#because it has been deprecated in OpenSSL 3.0
+#CFLAGS="-Werror"
 if [ x$COMPILER == xclang ]; then
     CFLAGS+=" -Wno-missing-field-initializers"
     CFLAGS+=" -Wno-missing-braces -Wno-cast-align"
