@@ -714,8 +714,9 @@ void mag_verify_config(request_rec *req, struct mag_config *cfg)
     /* we check only once */
     if (cfg->verified) return;
 
+#ifdef HAVE_CRED_STORE
     /* Check if cred store config is consistent with use_s4u2proxy.
-     * Although not strictly required it is generally adivsable to
+     * Although not strictly required it is generally advisable to
      * set keytab, client_keytab, and ccache in the cred_store when
      * use_s4u2proxy is set, this is to avoid easy mistakes that are
      * very difficult to diagnose */
@@ -724,14 +725,16 @@ void mag_verify_config(request_rec *req, struct mag_config *cfg)
         bool has_client_keytab = false;
         bool has_ccache = false;
 
-        for (int i = 0; i < cfg->cred_store->count; i++) {
-            const char *key = cfg->cred_store->elements[i].key;
-            if (strcmp(key, "keytab") == 0) {
-                has_keytab = true;
-            } else if (strcmp(key, "client_keytab") == 0) {
-                has_client_keytab = true;
-            } else if (strcmp(key, "ccache") == 0) {
-                has_ccache = true;
+        if (cfg->cred_store) {
+            for (int i = 0; i < cfg->cred_store->count; i++) {
+                const char *key = cfg->cred_store->elements[i].key;
+                if (strcmp(key, "keytab") == 0) {
+                    has_keytab = true;
+                } else if (strcmp(key, "client_keytab") == 0) {
+                    has_client_keytab = true;
+                } else if (strcmp(key, "ccache") == 0) {
+                    has_ccache = true;
+                }
             }
         }
 
@@ -751,6 +754,7 @@ void mag_verify_config(request_rec *req, struct mag_config *cfg)
                           "GssapiCredStore", "ccache");
         }
     }
+#endif
 
     cfg->verified = true;
 }
