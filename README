@@ -8,6 +8,38 @@ This module has been built as a replacement for the aging mod_auth_kerb.
 Its aim is to use only GSSAPI calls and be as much as possible agnostic
 of the actual mechanism used.
 
+
+Negotiate, Client Specific Behavior, and External Clients
+---------------------------------------------------------
+The mod_auth_gssapi httpd plugin relies on Microsoft's IANA registered 
+[www-authenticate: Negotiate](https://www.iana.org/assignments/http-authschemes/http-authschemes.xhtml) 
+auth scheme to provide Kerberos and NTLM authentication to web browsers.  
+The negotiation process is client driven and the default process is to 
+attempt Kerberos first, then fall back onto NTLM. 
+If NTLM is not desired it must be disabled client-side.  Many browsers 
+such as recent versions of Firefox default to disabling NTLM and require 
+opt-in (regardless of OS).  However. many browsers behave differently on 
+Windows, defer to the Windows Authentication subsystem, and therefore still 
+use an NTLM fallback per the original Microsoft specification in 
+[RFC4559](https://www.ietf.org/rfc/rfc4559.txt) by default.  Browsers which
+default to NTLM fallback on Windows include chromium based browsers such as 
+Chrome and Edge as well as older browsers such as IE.  
+
+If NTLM is enabled client side and Kerberos auth fails then the browser will
+prompt the user with a username and password dialog that looks similar to an 
+HTTP Basic auth form, regardless of whether the server is configured to handle 
+NTLM.  This often confuses and frustrates users and admins.   It may be 
+possible to disable NTLM fallback if an admin has control of every user OS and 
+user browser, but in that scenario (corporate network/intranet) the admin has 
+presumably correctly configured Kerberos so fallback is unlikely to occur. The 
+larger issue is if you have an external facing auth server and therefore no 
+control over all clients some of whom may be on Windows using a browser that 
+delegates to the Windows Authentication subsystem. Neither Kerberos nor NTLM 
+are designed to work in a public Internet scenario and therefore using IP-based 
+request filtering on the auth server to conditionally prompt only internal 
+managed Kerberos clients (corporate intranet) users with 
+`www-authenticate: Negotiate` is a reasonable solution.
+
 Dependencies
 ------------
 
