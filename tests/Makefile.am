@@ -13,6 +13,7 @@ EXTRA_DIST = \
 	t_basic_k5_two_users.py \
 	t_basic_proxy.py \
 	t_basic_timeout.py \
+	t_file_check.py \
 	t_hostname_acceptor.py \
 	t_localname.py \
 	t_mech_name.py \
