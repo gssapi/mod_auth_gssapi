@@ -129,7 +129,7 @@ Configuration Directives
 [GssapiAllowedMech](#gssapiallowedmech)<br>
 [GssapiBasicAuth](#gssapibasicauth)<br>
 [GssapiBasicAuthMech](#gssapibasicauthmech)<br>
-[GssapiBasicTicketTimeout](#gssapibasicticketvalidity)<br>
+[GssapiBasicTicketTimeout](#gssapibasictickettimeout)<br>
 [GssapiConnectionBound](#gssapiconnectionbound)<br>
 [GssapiCredStore](#gssapicredstore)<br>
 [GssapiDelegCcacheDir](#gssapidelegccachedir)<br>
