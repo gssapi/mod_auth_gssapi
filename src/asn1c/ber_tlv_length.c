@@ -78,7 +78,7 @@ ssize_t
 ber_skip_length(asn_codec_ctx_t *opt_codec_ctx,
 		int _is_constructed, const void *ptr, size_t size) {
 	ber_tlv_len_t vlen;	/* Length of V in TLV */
-	ssize_t tl;		/* Length of L in TLV */
+	ssize_t tl;		/* Length of T in TLV */
 	ssize_t ll;		/* Length of L in TLV */
 	size_t skip;
 
